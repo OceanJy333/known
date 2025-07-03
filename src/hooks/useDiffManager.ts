@@ -261,6 +261,7 @@ export function useDiffManager() {
     }
 
     let modifiedContent = originalContent
+    const appliedDiffIds = new Set<string>()
 
     // 按照位置排序，从后往前应用（避免位置偏移）
     const sortedDiffs = [...acceptedDiffs].sort((a, b) => {
@@ -269,7 +270,15 @@ export function useDiffManager() {
     })
 
     for (const diff of sortedDiffs) {
+      // 防止重复应用相同的 diff
+      if (appliedDiffIds.has(diff.id)) {
+        console.warn(`跳过重复应用 diff ${diff.id}`)
+        continue
+      }
+
       try {
+        let applied = false
+        
         switch (diff.type) {
           case 'insert':
             // 在指定位置插入内容
@@ -281,6 +290,7 @@ export function useDiffManager() {
                   modifiedContent.slice(0, insertPosition) + 
                   '\n\n' + diff.content.new + '\n\n' +
                   modifiedContent.slice(insertPosition)
+                applied = true
               }
             }
             break
@@ -288,14 +298,22 @@ export function useDiffManager() {
           case 'delete':
             // 删除指定内容
             if (diff.content?.old) {
-              modifiedContent = modifiedContent.replace(diff.content.old, '')
+              const oldIndex = modifiedContent.indexOf(diff.content.old)
+              if (oldIndex !== -1) {
+                modifiedContent = modifiedContent.replace(diff.content.old, '')
+                applied = true
+              }
             }
             break
 
           case 'replace':
             // 替换指定内容
             if (diff.content?.old && diff.content?.new) {
-              modifiedContent = modifiedContent.replace(diff.content.old, diff.content.new)
+              const oldIndex = modifiedContent.indexOf(diff.content.old)
+              if (oldIndex !== -1) {
+                modifiedContent = modifiedContent.replace(diff.content.old, diff.content.new)
+                applied = true
+              }
             }
             break
 
@@ -311,6 +329,7 @@ export function useDiffManager() {
                     modifiedContent.slice(0, searchIndex) + 
                     parsedDiff.replaceContent +
                     modifiedContent.slice(searchIndex + parsedDiff.searchContent.length)
+                  applied = true
                   console.log(`✅ 应用 search_replace diff ${diff.id}`)
                 } else {
                   console.warn(`❌ 未找到搜索内容，无法应用 diff ${diff.id}`)
@@ -318,6 +337,10 @@ export function useDiffManager() {
               }
             }
             break
+        }
+        
+        if (applied) {
+          appliedDiffIds.add(diff.id)
         }
       } catch (error) {
         console.warn(`应用 diff ${diff.id} 时出错:`, error)

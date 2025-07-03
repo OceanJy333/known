@@ -63,14 +63,28 @@ export default function StructuredNotes({
     }
   }, [diffs, notes, applyAcceptedDiffs])
 
+  // 使用 ref 来追踪已应用的 diff，避免重复应用
+  const appliedDiffsRef = useRef<Set<string>>(new Set())
+  
   // 当有已接受的 diff 时，同步更新 notes 状态
   useEffect(() => {
-    if (hasAcceptedDiffs && notesWithAppliedDiffs !== notes && notes.length > 0) {
-      // 同步已接受的 diff 到笔记状态
-      setNotes(notesWithAppliedDiffs)
-      onNotesChange?.(notesWithAppliedDiffs)
+    if (hasAcceptedDiffs && notes.length > 0) {
+      // 获取当前已接受的 diff ID
+      const currentAcceptedDiffIds = new Set(diffs.filter(d => d.status === 'accepted').map(d => d.id))
+      
+      // 检查是否有新的已接受 diff
+      const hasNewAcceptedDiffs = Array.from(currentAcceptedDiffIds).some(id => !appliedDiffsRef.current.has(id))
+      
+      if (hasNewAcceptedDiffs) {
+        // 更新已应用的 diff 记录
+        appliedDiffsRef.current = new Set(currentAcceptedDiffIds)
+        
+        // 应用新的 diff
+        setNotes(notesWithAppliedDiffs)
+        onNotesChange?.(notesWithAppliedDiffs)
+      }
     }
-  }, [hasAcceptedDiffs, notesWithAppliedDiffs, notes.length, onNotesChange])
+  }, [hasAcceptedDiffs, notesWithAppliedDiffs, notes.length, onNotesChange, diffs])
 
   useEffect(() => {
     // 只在首次挂载或原文内容变化时重新生成笔记
@@ -100,6 +114,9 @@ export default function StructuredNotes({
     setError(null)
     setNotes('')
     onNotesChange?.('')  // 通知父组件笔记被清空
+    
+    // 重置已应用的 diff 记录
+    appliedDiffsRef.current = new Set()
     
     // 自动隐藏目录，让用户专注于笔记生成
     onHideToc?.()
