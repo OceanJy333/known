@@ -1,0 +1,746 @@
+/* 隐藏全局滚动条 */
+html, body {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE 10+ */
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}
+
+/* 分屏调整手柄样式 */
+.panel-resize-handle {
+  position: relative;
+  background: transparent;
+  transition: all 0.2s ease;
+}
+
+.panel-resize-handle::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 40px;
+  background: currentColor;
+  opacity: 0.3;
+  border-radius: 1px;
+  transition: all 0.2s ease;
+}
+
+.panel-resize-handle:hover::before {
+  opacity: 0.6;
+  height: 60px;
+  width: 3px;
+}
+
+/* 边缘拖拽钩子动画 */
+@keyframes pulse-handle {
+  0% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(-2px);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+.edge-drag-handle {
+  position: relative;
+  overflow: hidden;
+}
+
+.edge-drag-handle::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.2), transparent);
+  transform: translateX(-100%);
+  transition: transform 0.6s ease;
+}
+
+.edge-drag-handle:hover::after {
+  transform: translateX(100%);
+}
+
+.edge-drag-handle:hover .drag-icon {
+  animation: pulse-handle 1s ease-in-out infinite;
+}
+
+/* React Resizable Panels 覆盖样式 */
+[data-panel-group-direction="horizontal"] {
+  height: 100%;
+}
+
+[data-panel] {
+  height: 100%;
+}
+
+[data-panel-resize-handle-enabled] {
+  position: relative;
+  cursor: col-resize;
+  user-select: none;
+}
+
+/* 淡入动画 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* 卡片样式优化 */
+.content-card {
+  background: white;
+  border-radius: 24px;
+  box-shadow: 
+    0 2px 8px rgba(0, 0, 0, 0.04),
+    0 1px 4px rgba(0, 0, 0, 0.06),
+    0 0 0 1px rgba(0, 0, 0, 0.02);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.content-card:hover {
+  box-shadow: 
+    0 4px 16px rgba(0, 0, 0, 0.06),
+    0 2px 8px rgba(0, 0, 0, 0.08),
+    0 0 0 1px rgba(0, 0, 0, 0.03);
+  transform: translateY(-0.5px);
+}
+
+.notes-card {
+  background: linear-gradient(135deg, 
+    rgba(59, 130, 246, 0.03) 0%,
+    rgba(139, 92, 246, 0.03) 100%);
+  border-radius: 24px;
+  box-shadow: 
+    0 3px 12px rgba(59, 130, 246, 0.08),
+    0 1px 6px rgba(59, 130, 246, 0.06),
+    0 0 0 1px rgba(59, 130, 246, 0.04);
+  border: 1px solid rgba(59, 130, 246, 0.15);
+  backdrop-filter: blur(20px);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  .content-card {
+    background: #0f172a;
+    border: 1px solid #334155;
+    box-shadow: 
+      0 4px 16px rgba(0, 0, 0, 0.2),
+      0 2px 8px rgba(0, 0, 0, 0.15),
+      0 0 0 1px rgba(255, 255, 255, 0.05);
+  }
+  
+  .content-card:hover {
+    box-shadow: 
+      0 6px 24px rgba(0, 0, 0, 0.25),
+      0 3px 12px rgba(0, 0, 0, 0.2),
+      0 0 0 1px rgba(255, 255, 255, 0.08);
+  }
+  
+  .notes-card {
+    background: linear-gradient(135deg, 
+      rgba(59, 130, 246, 0.1) 0%,
+      rgba(139, 92, 246, 0.1) 100%);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    box-shadow: 
+      0 4px 16px rgba(59, 130, 246, 0.15),
+      0 2px 8px rgba(59, 130, 246, 0.1),
+      0 0 0 1px rgba(59, 130, 246, 0.1);
+  }
+}
+
+/* 撕裂效果 */
+.tear-effect {
+  position: relative;
+  overflow: hidden;
+}
+
+.tear-effect::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 2px;
+  height: 100%;
+  background: linear-gradient(to bottom,
+    transparent 0%,
+    rgba(59, 130, 246, 0.3) 20%,
+    rgba(59, 130, 246, 0.6) 50%,
+    rgba(59, 130, 246, 0.3) 80%,
+    transparent 100%
+  );
+  transform: scaleX(0);
+  transform-origin: right;
+  transition: transform 0.3s ease-out;
+}
+
+.tear-effect.tearing::before {
+  transform: scaleX(1);
+  animation: tearGlow 0.6s ease-out;
+}
+
+@keyframes tearGlow {
+  0% {
+    width: 2px;
+    box-shadow: 0 0 0 rgba(59, 130, 246, 0);
+  }
+  50% {
+    width: 4px;
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
+  }
+  100% {
+    width: 2px;
+    box-shadow: 0 0 0 rgba(59, 130, 246, 0);
+  }
+}
+
+/* 卡片出现动画 */
+.card-slide-in {
+  animation: cardSlideIn 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes cardSlideIn {
+  0% {
+    opacity: 0;
+    transform: translateX(100%) rotate(2deg);
+    filter: blur(4px);
+  }
+  60% {
+    opacity: 0.8;
+    transform: translateX(-2%) rotate(-0.5deg);
+    filter: blur(1px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) rotate(0deg);
+    filter: blur(0);
+  }
+}
+
+/* iOS 风格滚动条 - 默认隐藏，滚动时显示 */
+.ios-scrollbar {
+  /* Firefox 滚动条样式 */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
+}
+
+.ios-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.ios-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 4px;
+  margin-top: 24px; /* 避免滚动条超出圆角 */
+  margin-bottom: 24px;
+  margin-right: 2px;
+}
+
+.ios-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  transition: all 0.2s ease;
+}
+
+/* 悬停时显示 */
+.ios-scrollbar:hover::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+/* 滚动时显示 */
+.ios-scrollbar.scrolling::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+/* 拖拽时 */
+.ios-scrollbar::-webkit-scrollbar-thumb:active {
+  background: rgba(0, 0, 0, 0.4);
+}
+
+/* 暗色模式下的滚动条 */
+@media (prefers-color-scheme: dark) {
+  .ios-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
+  }
+  
+  .ios-scrollbar:hover::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.25);
+  }
+  
+  .ios-scrollbar.scrolling::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+  }
+  
+  .ios-scrollbar::-webkit-scrollbar-thumb:active {
+    background: rgba(255, 255, 255, 0.35);
+  }
+}
+
+/* Diff 卡片样式 */
+.diff-card {
+  border-radius: 12px;
+  border: 1px solid;
+  box-shadow: 
+    0 2px 8px rgba(0, 0, 0, 0.04),
+    0 1px 4px rgba(0, 0, 0, 0.06);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  margin: 8px 0;
+  overflow: hidden;
+  backdrop-filter: blur(8px);
+}
+
+.diff-card:hover {
+  box-shadow: 
+    0 4px 16px rgba(0, 0, 0, 0.08),
+    0 2px 8px rgba(0, 0, 0, 0.06);
+  transform: translateY(-1px);
+}
+
+/* Diff 预览样式 */
+.diff-preview-old {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  background: rgba(239, 68, 68, 0.05);
+  padding: 4px 8px;
+  border-radius: 6px;
+  border-left: 3px solid rgba(239, 68, 68, 0.3);
+}
+
+.diff-preview-new {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  background: rgba(34, 197, 94, 0.05);
+  padding: 4px 8px;
+  border-radius: 6px;
+  border-left: 3px solid rgba(34, 197, 94, 0.3);
+}
+
+/* 暗色模式下的 Diff 卡片 */
+@media (prefers-color-scheme: dark) {
+  .diff-preview-old {
+    background: rgba(239, 68, 68, 0.1);
+    border-left-color: rgba(239, 68, 68, 0.4);
+  }
+  
+  .diff-preview-new {
+    background: rgba(34, 197, 94, 0.1);
+    border-left-color: rgba(34, 197, 94, 0.4);
+  }
+}
+
+/* 聊天输入区域 - 内嵌式设计 */
+.chat-input-wrapper-embedded {
+  position: relative;
+  width: 100%;
+}
+
+.chat-input-embedded {
+  width: 100%;
+  min-height: 4.5rem; /* 3行文本高度 */
+  max-height: 8rem; /* 最大高度限制 */
+  padding: 16px 20px 48px 20px; /* 底部留出空间给控制按钮 */
+  border: 2px solid;
+  border-color: rgba(226, 232, 240, 0.6);
+  border-radius: 20px;
+  resize: none;
+  font-size: 13px;
+  line-height: 1.6;
+  background: linear-gradient(135deg, 
+    rgba(255, 255, 255, 0.95) 0%, 
+    rgba(248, 250, 252, 0.95) 100%);
+  backdrop-filter: blur(12px);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  outline: none;
+  box-shadow: 
+    0 4px 16px rgba(0, 0, 0, 0.04),
+    0 2px 8px rgba(0, 0, 0, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.chat-input-embedded:focus {
+  border-color: rgba(59, 130, 246, 0.4);
+  box-shadow: 
+    0 0 0 4px rgba(59, 130, 246, 0.08),
+    0 6px 20px rgba(0, 0, 0, 0.08),
+    0 2px 12px rgba(59, 130, 246, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  background: linear-gradient(135deg, 
+    rgba(255, 255, 255, 1) 0%, 
+    rgba(248, 250, 252, 1) 100%);
+  transform: translateY(-1px);
+}
+
+.chat-input-embedded:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background: rgba(249, 250, 251, 0.8);
+  transform: none;
+}
+
+/* 内嵌控制按钮容器 */
+.chat-input-controls {
+  position: absolute;
+  bottom: 8px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 34px;
+  pointer-events: none; /* 让子元素处理点击 */
+  z-index: 10; /* 确保按钮在文字上方 */
+}
+
+/* iOS 风格开关容器 */
+.ios-switch-container {
+  pointer-events: auto;
+  z-index: 11; /* 确保开关在最上层 */
+}
+
+.ios-switch {
+  position: relative;
+  width: 68px;
+  height: 28px;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.ios-switch.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 开关轨道背景 */
+.switch-track-bg {
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 
+    inset 0 2px 4px rgba(0, 0, 0, 0.1),
+    0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.switch-ask .switch-track-bg {
+  background: linear-gradient(135deg, 
+    rgba(59, 130, 246, 0.15) 0%, 
+    rgba(59, 130, 246, 0.25) 100%);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.switch-agent .switch-track-bg {
+  background: linear-gradient(135deg, 
+    rgba(34, 197, 94, 0.15) 0%, 
+    rgba(34, 197, 94, 0.25) 100%);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+/* 文字标签 - 居中在空白区域 */
+.switch-labels {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.025em;
+  pointer-events: none;
+  z-index: -1; /* 文字在胶囊轨道背景下方 */
+}
+
+.switch-ask .switch-labels {
+  left: 25px;  /* Ask模式时小圆在左(3+22=25)，文字在右侧空白区域 */
+  right: 3px;  /* 右边留边距 */
+}
+
+.switch-agent .switch-labels {
+  left: 3px;   /* Agent模式时小圆在右，文字在左侧空白区域 */
+  right: 25px; /* 右边留出小圆空间(43+22=65, 68-65=3, 但要留边距所以是25) */
+}
+
+.label-ask,
+.label-agent {
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+}
+
+/* 显示当前模式的文字 */
+.switch-ask .label-ask {
+  display: block; /* Ask模式时显示Ask文字 */
+  color: rgba(59, 130, 246, 0.8);
+}
+
+.switch-ask .label-agent {
+  display: none; /* Ask模式时隐藏Agent文字 */
+}
+
+.switch-agent .label-ask {
+  display: none; /* Agent模式时隐藏Ask文字 */
+}
+
+.switch-agent .label-agent {
+  display: block; /* Agent模式时显示Agent文字 */
+  color: rgba(34, 197, 94, 0.8);
+}
+
+/* 滑动的小圆 */
+.switch-thumb-circle {
+  position: absolute;
+  top: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  z-index: 2;
+  box-shadow: 
+    0 2px 8px rgba(0, 0, 0, 0.15),
+    0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+.switch-ask .switch-thumb-circle {
+  left: 1px;
+  background: linear-gradient(135deg, #ffffff 0%, #f1f5f9 100%);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+.switch-agent .switch-thumb-circle {
+  left: 43px; /* 68px - 22px - 3px */
+  background: linear-gradient(135deg, #ffffff 0%, #f1f5f9 100%);
+  border: 1px solid rgba(34, 197, 94, 0.2);
+}
+
+/* 圆内图标 */
+.thumb-icon {
+  font-size: 8px;
+  transition: all 0.3s ease;
+}
+
+.switch-ask .thumb-icon {
+  color: #3b82f6;
+}
+
+.switch-agent .thumb-icon {
+  color: #22c55e;
+}
+
+/* 悬停效果 */
+.ios-switch:hover:not(.disabled) .switch-thumb-circle {
+  transform: scale(1.05);
+  box-shadow: 
+    0 4px 12px rgba(0, 0, 0, 0.2),
+    0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.ios-switch:active:not(.disabled) .switch-thumb-circle {
+  transform: scale(0.95);
+}
+
+/* 内嵌发送按钮 */
+.chat-send-btn-embedded {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 9px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 
+    0 3px 8px rgba(59, 130, 246, 0.25),
+    0 1px 4px rgba(59, 130, 246, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  z-index: 11; /* 确保发送按钮在最上层 */
+}
+
+.chat-send-btn-embedded:hover:not(:disabled) {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  transform: translateY(-2px) scale(1.08);
+  box-shadow: 
+    0 6px 16px rgba(59, 130, 246, 0.35),
+    0 3px 8px rgba(59, 130, 246, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+.chat-send-btn-embedded:active:not(:disabled) {
+  transform: translateY(-1px) scale(1.05);
+  box-shadow: 
+    0 3px 8px rgba(59, 130, 246, 0.25),
+    0 1px 4px rgba(59, 130, 246, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.chat-send-btn-embedded:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: linear-gradient(135deg, #9ca3af 0%, #6b7280 100%);
+  transform: none;
+  box-shadow: 
+    0 2px 4px rgba(0, 0, 0, 0.1),
+    0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+/* 三个点加载动画 */
+.dots-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.dots-loading span {
+  display: inline-block;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background-color: currentColor;
+  animation: dots-bounce 1.4s ease-in-out infinite both;
+}
+
+.dots-loading span:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.dots-loading span:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+.dots-loading span:nth-child(3) {
+  animation-delay: 0s;
+}
+
+@keyframes dots-bounce {
+  0%, 80%, 100% {
+    transform: scale(0.8);
+    opacity: 0.5;
+  }
+  40% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+}
+
+/* 暗色模式 */
+@media (prefers-color-scheme: dark) {
+  .chat-input-embedded {
+    background: linear-gradient(135deg, 
+      rgba(15, 23, 42, 0.95) 0%, 
+      rgba(30, 41, 59, 0.95) 100%);
+    border-color: rgba(71, 85, 105, 0.6);
+    color: #e2e8f0;
+    box-shadow: 
+      0 4px 16px rgba(0, 0, 0, 0.1),
+      0 2px 8px rgba(0, 0, 0, 0.15),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  }
+  
+  .chat-input-embedded:focus {
+    border-color: rgba(59, 130, 246, 0.5);
+    background: linear-gradient(135deg, 
+      rgba(15, 23, 42, 1) 0%, 
+      rgba(30, 41, 59, 1) 100%);
+    box-shadow: 
+      0 0 0 4px rgba(59, 130, 246, 0.1),
+      0 6px 20px rgba(0, 0, 0, 0.2),
+      0 2px 12px rgba(59, 130, 246, 0.15),
+      inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    transform: translateY(-1px);
+  }
+  
+  .chat-input-embedded:disabled {
+    background: rgba(30, 41, 59, 0.8);
+    color: #64748b;
+    transform: none;
+  }
+  
+  .chat-input-embedded::placeholder {
+    color: #64748b;
+  }
+  
+  /* 暗色模式下的iOS开关 */
+  .switch-ask .switch-track-bg {
+    background: linear-gradient(135deg, 
+      rgba(59, 130, 246, 0.2) 0%, 
+      rgba(59, 130, 246, 0.3) 100%);
+    border: 1px solid rgba(59, 130, 246, 0.4);
+    box-shadow: 
+      inset 0 2px 4px rgba(0, 0, 0, 0.15),
+      0 1px 2px rgba(0, 0, 0, 0.1);
+  }
+  
+  .switch-agent .switch-track-bg {
+    background: linear-gradient(135deg, 
+      rgba(34, 197, 94, 0.2) 0%, 
+      rgba(34, 197, 94, 0.3) 100%);
+    border: 1px solid rgba(34, 197, 94, 0.4);
+    box-shadow: 
+      inset 0 2px 4px rgba(0, 0, 0, 0.15),
+      0 1px 2px rgba(0, 0, 0, 0.1);
+  }
+  
+  .switch-ask .switch-thumb-circle {
+    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    box-shadow: 
+      0 2px 8px rgba(0, 0, 0, 0.2),
+      0 1px 4px rgba(0, 0, 0, 0.15);
+  }
+  
+  .switch-agent .switch-thumb-circle {
+    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    box-shadow: 
+      0 2px 8px rgba(0, 0, 0, 0.2),
+      0 1px 4px rgba(0, 0, 0, 0.15);
+  }
+  
+  .switch-ask .label-ask {
+    color: rgba(96, 165, 250, 0.9);
+  }
+  
+  .switch-agent .label-agent {
+    color: rgba(52, 211, 153, 0.9);
+  }
+  
+  .switch-ask .thumb-icon {
+    color: #60a5fa;
+  }
+  
+  .switch-agent .thumb-icon {
+    color: #34d399;
+  }
+}
