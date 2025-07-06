@@ -8,12 +8,17 @@ import FloatingChat from '@/components/FloatingChat'
 import TabBar from '@/components/TabBar'
 import StructuredNotes from '@/components/StructuredNotes'
 import GravityRopeDragHandle from '@/components/GravityRopeDragHandle'
+import { ThinkingMode } from '@/components/thinking-mode/ThinkingMode'
 import { useTabs } from '@/hooks/useTabs'
 import { useDiffManager } from '@/hooks/useDiffManager'
 import { TableOfContent } from '@/types/tabs'
+import { AppMode } from '@/types/thinking'
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels'
 
 export default function Home() {
+  // 模式管理
+  const [appMode, setAppMode] = useState<AppMode>('sediment')
+
   // 标签页管理
   const { 
     tabs, 
@@ -53,17 +58,8 @@ export default function Home() {
   const [isDraggingHandle, setIsDraggingHandle] = useState(false)
   const [dragProgress, setDragProgress] = useState(0)
   const [isTearing, setIsTearing] = useState(false)
-  // 计算初始居中位置
-  const getInitialPosition = () => {
-    if (typeof window !== 'undefined') {
-      return {
-        x: (window.innerWidth - 400) / 2,
-        y: (window.innerHeight - 500) / 2
-      }
-    }
-    return { x: 100, y: 100 }
-  }
-  const [chatPosition, setChatPosition] = useState(getInitialPosition)
+  // 聊天窗口位置
+  const [chatPosition, setChatPosition] = useState({ x: 100, y: 100 })
   const [forceExpanded, setForceExpanded] = useState(false)
   const [isAssistantVisible, setIsAssistantVisible] = useState(false)
   const [lastChatPosition, setLastChatPosition] = useState<{ x: number; y: number } | null>(null)
@@ -329,6 +325,25 @@ export default function Home() {
     setForceExpanded(false)
   }
 
+  // 从 localStorage 恢复模式设置
+  useEffect(() => {
+    const savedMode = localStorage.getItem('app-mode') as AppMode
+    if (savedMode && (savedMode === 'sediment' || savedMode === 'thinking')) {
+      setAppMode(savedMode)
+    }
+    
+    // 设置聊天窗口居中位置
+    const centerX = (window.innerWidth - 400) / 2
+    const centerY = (window.innerHeight - 500) / 2
+    setChatPosition({ x: centerX, y: centerY })
+  }, [])
+
+  // 处理模式切换
+  const handleModeChange = (mode: AppMode) => {
+    setAppMode(mode)
+    localStorage.setItem('app-mode', mode)
+  }
+
   // 处理重力绳子拖拽
   const handleRopeDragStart = () => {
     setIsDraggingHandle(true)
@@ -384,9 +399,47 @@ export default function Home() {
     })
   }, [markdownContent, isNotePanelOpen])
 
+  // 动态调整TabBar高度
+  useEffect(() => {
+    const updateTabBarHeight = () => {
+      const tabBar = document.querySelector('[class*="fixed top-0"]') as HTMLElement
+      if (tabBar) {
+        const height = tabBar.offsetHeight
+        console.log('TabBar实际高度:', height, 'px')
+        document.documentElement.style.setProperty('--tabbar-height', `${height}px`)
+      }
+    }
+    
+    // 初始调整
+    updateTabBarHeight()
+    
+    // 延迟调整，确保DOM完全渲染
+    setTimeout(updateTabBarHeight, 100)
+    
+    // 监听窗口大小变化
+    window.addEventListener('resize', updateTabBarHeight)
+    
+    return () => {
+      window.removeEventListener('resize', updateTabBarHeight)
+    }
+  }, [appMode]) // 模式切换时重新计算
+
   // 键盘快捷键支持
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // 模式切换快捷键
+      if (e.metaKey || e.ctrlKey) {
+        if (e.key === '1') {
+          e.preventDefault()
+          handleModeChange('sediment')
+          return
+        } else if (e.key === '2') {
+          e.preventDefault()
+          handleModeChange('thinking')
+          return
+        }
+      }
+
       // 全局快捷键
       if (e.key === 't' && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
         e.preventDefault()
@@ -400,10 +453,10 @@ export default function Home() {
         return
       }
       
-      // 数字键切换标签页
-      if ((e.metaKey || e.ctrlKey) && e.key >= '1' && e.key <= '9') {
+      // 数字键切换标签页（仅在沉淀模式）
+      if (appMode === 'sediment' && (e.metaKey || e.ctrlKey) && e.key >= '3' && e.key <= '9') {
         e.preventDefault()
-        const index = parseInt(e.key) - 1
+        const index = parseInt(e.key) - 3 // 从3开始，因为1、2用于模式切换
         if (tabs[index]) {
           switchTab(tabs[index].id)
         }
@@ -430,7 +483,7 @@ export default function Home() {
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [markdownContent, activeTabId, tabs, handleNewTab, closeTab, switchTab, resetApp])
+  }, [markdownContent, activeTabId, tabs, handleNewTab, closeTab, switchTab, resetApp, appMode, handleModeChange])
 
   if (isLoading) {
     return (
@@ -464,11 +517,19 @@ export default function Home() {
         onNewTab={handleNewTab}
         onOpenAssistant={handleOpenAssistant}
         isAssistantVisible={isAssistantVisible}
+        currentMode={appMode}
+        onModeChange={handleModeChange}
       />
 
-      {/* 主内容区域 */}
-      <div className="flex-1" style={{ height: 'calc(100vh - 32px)', paddingTop: '32px' }}>
-        {!markdownContent ? (
+      {/* 主内容区域 - 使用flex-1代替固定高度计算 */}
+      <div className="flex-1 overflow-hidden">
+        {appMode === 'thinking' ? (
+          <div className="thinking-mode" style={{ top: 'var(--tabbar-height)', position: 'absolute', width: '100%', height: 'calc(100% - var(--tabbar-height))' }}>
+            <ThinkingMode />
+          </div>
+        ) : (
+          <div className="sediment-mode h-full" style={{ top: 'var(--tabbar-height)', position: 'absolute', width: '100%', height: 'calc(100% - var(--tabbar-height))' }}>
+            {!markdownContent ? (
         // 内容输入界面
         <div className="h-full flex flex-col items-center justify-center px-6 py-12">
           <div className="text-center mb-8 fade-in">
@@ -490,7 +551,7 @@ export default function Home() {
             {/* 左侧原文区域 */}
             <Panel defaultSize={isNotePanelOpen ? 50 : 100} minSize={30}>
               <div className="h-full px-0 py-1">
-                <div className={`content-card ${isTearing ? 'tear-effect tearing' : ''}`} style={{height: 'calc(100vh - 44px)'}}>
+                <div className={`content-card h-full ${isTearing ? 'tear-effect tearing' : ''}`}>
                   <div className="h-full flex flex-col overflow-hidden">
                     <div className="flex-1 overflow-y-auto ios-scrollbar">
                       <div className="container mx-auto px-4 pt-12 pb-6 max-w-4xl">
@@ -553,7 +614,7 @@ export default function Home() {
           {isNotePanelOpen && (
             <Panel defaultSize={50} minSize={30}>
               <div className="h-full px-0 py-1">
-                <div className="content-card" style={{height: 'calc(100vh - 44px)'}}>
+                <div className="content-card h-full">
                   <StructuredNotes
                     originalContent={markdownContent}
                     onClose={() => setIsNotePanelOpen(false)}
@@ -604,6 +665,8 @@ export default function Home() {
             onAddDiff={(diff) => addDiffs([diff])}
           />
         </div>
+        )}
+          </div>
         )}
       </div>
       

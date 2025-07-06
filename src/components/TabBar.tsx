@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { TabData } from '@/types/tabs'
+import { AppMode, modeConfig } from '@/types/thinking'
 
 interface TabBarProps {
   tabs: TabData[]
@@ -11,6 +12,8 @@ interface TabBarProps {
   onNewTab: () => void
   onOpenAssistant?: () => void
   isAssistantVisible?: boolean
+  currentMode?: AppMode
+  onModeChange?: (mode: AppMode) => void
 }
 
 interface TabItemProps {
@@ -80,38 +83,89 @@ function TabItem({ tab, isActive, onSwitch, onClose }: TabItemProps) {
   )
 }
 
-export default function TabBar({ tabs, activeTabId, onTabSwitch, onTabClose, onNewTab, onOpenAssistant, isAssistantVisible }: TabBarProps) {
+export default function TabBar({ 
+  tabs, 
+  activeTabId, 
+  onTabSwitch, 
+  onTabClose, 
+  onNewTab, 
+  onOpenAssistant, 
+  isAssistantVisible,
+  currentMode = 'sediment',
+  onModeChange
+}: TabBarProps) {
   return (
     <div className="fixed top-0 left-0 right-0 z-50 bg-gray-100 dark:bg-slate-900 border-b border-gray-200 dark:border-slate-700">
       <div className="flex items-center">
-        {/* 标签页列表 */}
-        <div className="flex-1 flex items-center overflow-x-auto hide-scrollbar">
-          <div className="flex">
-            {tabs.map(tab => (
-              <TabItem
-                key={tab.id}
-                tab={tab}
-                isActive={tab.id === activeTabId}
-                onSwitch={() => onTabSwitch(tab.id)}
-                onClose={() => onTabClose(tab.id)}
-              />
-            ))}
+        {/* 左侧：模式切换区域 */}
+        {onModeChange && (
+          <div className="flex-shrink-0 flex items-center pl-3 pr-2">
+            <div className="mode-switcher">
+              <button 
+                className={`mode-btn ${currentMode === 'sediment' ? 'active' : ''}`}
+                onClick={() => onModeChange('sediment')}
+                title={`${modeConfig.sediment.label} (${modeConfig.sediment.shortcut})`}
+              >
+                {modeConfig.sediment.icon}
+              </button>
+              <button 
+                className={`mode-btn ${currentMode === 'thinking' ? 'active' : ''}`}
+                onClick={() => onModeChange('thinking')}
+                title={`${modeConfig.thinking.label} (${modeConfig.thinking.shortcut})`}
+              >
+                {modeConfig.thinking.icon}
+              </button>
+            </div>
+            
+            {/* 分隔线 */}
+            <div className="mode-divider" />
           </div>
-        </div>
+        )}
 
-        {/* 新建标签页按钮 */}
-        <div className="flex-shrink-0 px-1.5">
-          <button
-            onClick={onNewTab}
-            className="flex items-center justify-center w-6 h-6 rounded-md text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-slate-700 hover:text-gray-800 dark:hover:text-gray-200 transition-all duration-200"
-            title="新建标签页 (Ctrl+T)"
-          >
-            <i className="fas fa-plus text-xs"></i>
-          </button>
-        </div>
+        {/* 标签页列表（仅在沉淀模式显示） */}
+        {currentMode === 'sediment' && (
+          <div className="flex-1 flex items-center overflow-x-auto hide-scrollbar">
+            <div className="flex">
+              {tabs.map(tab => (
+                <TabItem
+                  key={tab.id}
+                  tab={tab}
+                  isActive={tab.id === activeTabId}
+                  onSwitch={() => onTabSwitch(tab.id)}
+                  onClose={() => onTabClose(tab.id)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
 
-        {/* AI 助手按钮 */}
-        {onOpenAssistant && !isAssistantVisible && (
+        {/* 沉思模式标题 */}
+        {currentMode === 'thinking' && (
+          <div className="flex-1 flex items-center px-4">
+            <h1 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
+              {modeConfig.thinking.label}
+            </h1>
+            <span className="ml-2 text-sm text-gray-500 dark:text-gray-400">
+              {modeConfig.thinking.description}
+            </span>
+          </div>
+        )}
+
+        {/* 新建标签页按钮（仅在沉淀模式显示） */}
+        {currentMode === 'sediment' && (
+          <div className="flex-shrink-0 px-1.5">
+            <button
+              onClick={onNewTab}
+              className="flex items-center justify-center w-6 h-6 rounded-md text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-slate-700 hover:text-gray-800 dark:hover:text-gray-200 transition-all duration-200"
+              title="新建标签页 (Ctrl+T)"
+            >
+              <i className="fas fa-plus text-xs"></i>
+            </button>
+          </div>
+        )}
+
+        {/* AI 助手按钮（仅在沉淀模式显示） */}
+        {currentMode === 'sediment' && onOpenAssistant && !isAssistantVisible && (
           <div className="flex-shrink-0 pr-1.5">
             <button
               onClick={onOpenAssistant}
