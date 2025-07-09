@@ -10,15 +10,17 @@ import { NoteDetailModal } from './NoteDetailModal'
 interface CanvasCardProps {
   card: CanvasCardType
   isSelected: boolean
+  knowledgeBaseMap: Map<string, KnowledgeNote>
   onSelect: (isMulti: boolean) => void
   onPositionChange: (position: Position) => void
   onSizeChange: (size: CanvasCardType['size']) => void
   onRemove: () => void
 }
 
-export function CanvasCard({
+function CanvasCardComponent({
   card,
   isSelected,
+  knowledgeBaseMap,
   onSelect,
   onPositionChange,
   onSizeChange,
@@ -32,9 +34,116 @@ export function CanvasCard({
   const [hoverTimer, setHoverTimer] = useState<NodeJS.Timeout | null>(null)
   const cardRef = useRef<HTMLDivElement>(null)
   
-  // 获取笔记数据
-  const note = mockNotes.find(n => n.id === card.noteId)
-  if (!note) return null
+  // 获取笔记数据 - 使用 Map 索引优化查找性能
+  console.log('🃏 [DEBUG] CanvasCard: 查找笔记数据', {
+    cardId: card.id,
+    noteId: card.noteId,
+    knowledgeBaseSize: knowledgeBaseMap.size,
+    knowledgeBaseIds: Array.from(knowledgeBaseMap.keys()).slice(0, 5),
+    allIds: Array.from(knowledgeBaseMap.keys())
+  })
+  
+  const note = knowledgeBaseMap.get(card.noteId)
+  
+  console.log('🃏 [DEBUG] CanvasCard: 笔记查找结果', {
+    found: !!note,
+    noteData: note ? { id: note.id, title: note.title } : null,
+    searchedId: card.noteId,
+    exactMatch: knowledgeBaseMap.has(card.noteId)
+  })
+  
+  if (!note) {
+    console.error('❌ [DEBUG] CanvasCard: 找不到笔记数据，显示占位卡片', {
+      cardNoteId: card.noteId,
+      availableNoteIds: Array.from(knowledgeBaseMap.keys()).slice(0, 3)
+    })
+    
+    // 显示错误占位卡片而不是返回null
+    return (
+      <div
+        ref={cardRef}
+        className={`canvas-card error-card ${isSelected ? 'selected' : ''}`}
+        style={{
+          position: 'absolute',
+          left: card.position.x,
+          top: card.position.y,
+          width: CARD_SIZES[card.size].width,
+          height: CARD_SIZES[card.size].height,
+          zIndex: card.zIndex
+        }}
+        onClick={(e) => {
+          e.stopPropagation()
+          onSelect(e.metaKey || e.ctrlKey)
+        }}
+      >
+        <div className="error-content">
+          <div className="error-icon">⚠️</div>
+          <div className="error-title">卡片数据缺失</div>
+          <div className="error-id">ID: {card.noteId}</div>
+          <button 
+            onClick={onRemove}
+            className="error-remove-btn"
+          >
+            移除
+          </button>
+        </div>
+        
+        <style jsx>{`
+          .error-card {
+            background: #fef2f2;
+            border: 2px dashed #f87171;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+          }
+          
+          .error-card.selected {
+            border-color: #dc2626;
+            box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+          }
+          
+          .error-content {
+            text-align: center;
+            color: #991b1b;
+          }
+          
+          .error-icon {
+            font-size: 24px;
+            margin-bottom: 8px;
+          }
+          
+          .error-title {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 4px;
+          }
+          
+          .error-id {
+            font-size: 11px;
+            color: #7f1d1d;
+            margin-bottom: 12px;
+            word-break: break-all;
+          }
+          
+          .error-remove-btn {
+            padding: 4px 8px;
+            background: #dc2626;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 11px;
+            cursor: pointer;
+          }
+          
+          .error-remove-btn:hover {
+            background: #b91c1c;
+          }
+        `}</style>
+      </div>
+    )
+  }
   
   // 获取当前尺寸的内容配置
   const contentConfig = CARD_CONTENT_CONFIG[card.size]
@@ -62,9 +171,9 @@ export function CanvasCard({
     // 阻止事件冒泡到画布
     e.stopPropagation()
     
-    // 如果点击的是非标题区域，不启动拖拽
+    // 如果点击的是关闭按钮，不启动拖拽
     const target = e.target as HTMLElement
-    if (!target.closest('.card-header')) {
+    if (target.closest('.card-close') || target.closest('.resize-handle')) {
       return
     }
     
@@ -75,22 +184,31 @@ export function CanvasCard({
     const rect = cardRef.current?.getBoundingClientRect()
     if (rect) {
       setDragOffset({
-        x: e.clientX - card.position.x,
-        y: e.clientY - card.position.y
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top
       })
     }
     
     setIsDragging(true)
-  }, [card.position, onSelect])
+  }, [onSelect])
   
   // 处理拖拽移动
   useEffect(() => {
     if (!isDragging) return
     
     const handleMouseMove = (e: MouseEvent) => {
+      e.preventDefault()
+      
+      // 获取画布容器的位置信息
+      const canvasContainer = cardRef.current?.offsetParent as HTMLElement
+      if (!canvasContainer) return
+      
+      const canvasRect = canvasContainer.getBoundingClientRect()
+      
+      // 计算相对于画布的位置
       const newPosition = {
-        x: e.clientX - dragOffset.x,
-        y: e.clientY - dragOffset.y
+        x: e.clientX - canvasRect.left - dragOffset.x,
+        y: e.clientY - canvasRect.top - dragOffset.y
       }
       
       // 限制在画布边界内
@@ -104,12 +222,13 @@ export function CanvasCard({
       setIsDragging(false)
     }
     
-    document.addEventListener('mousemove', handleMouseMove)
-    document.addEventListener('mouseup', handleMouseUp)
+    // 添加捕获事件监听器
+    document.addEventListener('mousemove', handleMouseMove, { capture: true })
+    document.addEventListener('mouseup', handleMouseUp, { capture: true })
     
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('mouseup', handleMouseUp)
+      document.removeEventListener('mousemove', handleMouseMove, { capture: true })
+      document.removeEventListener('mouseup', handleMouseUp, { capture: true })
     }
   }, [isDragging, dragOffset, onPositionChange])
   
@@ -317,13 +436,17 @@ export function CanvasCard({
           background: white;
           border-radius: 12px;
           box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-          cursor: default;
+          cursor: grab;
           user-select: none;
           transition: box-shadow 0.2s, transform 0.1s;
           display: flex;
           flex-direction: column;
           overflow: hidden;
           animation: cardEntry 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .canvas-card:active {
+          cursor: grabbing;
         }
 
         @keyframes cardEntry {
@@ -347,8 +470,11 @@ export function CanvasCard({
 
         .canvas-card.dragging {
           cursor: grabbing;
-          opacity: 0.9;
+          opacity: 0.8;
           z-index: 1000 !important;
+          transform: scale(1.05);
+          box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
+          transition: none;
         }
 
         .canvas-card.resizing {
@@ -366,10 +492,16 @@ export function CanvasCard({
           border-bottom: 1px solid rgba(0, 0, 0, 0.06);
           cursor: grab;
           background: rgba(0, 0, 0, 0.02);
+          transition: background 0.2s ease;
+        }
+
+        .card-header:hover {
+          background: rgba(0, 0, 0, 0.04);
         }
 
         .card-header:active {
           cursor: grabbing;
+          background: rgba(0, 0, 0, 0.06);
         }
 
         .card-icon {
@@ -645,3 +777,17 @@ export function CanvasCard({
     </>
   )
 }
+
+// 使用 React.memo 优化组件渲染性能
+export const CanvasCard = React.memo(CanvasCardComponent, (prevProps, nextProps) => {
+  // 自定义比较函数，只有在这些关键属性变化时才重新渲染
+  return (
+    prevProps.card.id === nextProps.card.id &&
+    prevProps.card.position.x === nextProps.card.position.x &&
+    prevProps.card.position.y === nextProps.card.position.y &&
+    prevProps.card.size === nextProps.card.size &&
+    prevProps.card.zIndex === nextProps.card.zIndex &&
+    prevProps.isSelected === nextProps.isSelected &&
+    prevProps.knowledgeBaseMap === nextProps.knowledgeBaseMap
+  )
+})

@@ -97,5 +97,58 @@ export const CANVAS_CONSTANTS = {
   EDGE_PADDING: 10,
   MAX_CARDS: 20,
   GRID_SIZE: 20,
-  DEFAULT_CARD_SIZE: 'medium' as const
+  DEFAULT_CARD_SIZE: 'medium' as const,
+  // 问题节点相关常量
+  QUESTION_NODE_WIDTH: 320,
+  QUESTION_NODE_HEIGHT: 180,
+  QUESTION_NODE_EXPANDED_WIDTH: 480,
+  QUESTION_NODE_EXPANDED_HEIGHT: 300,
+  // 连接线相关常量
+  CONNECTION_STRENGTH_THRESHOLD: 0.6,
+  CONNECTION_ANIMATION_DURATION: 2000
+}
+
+// 连接线类型（支持问题节点和笔记卡片之间的连接）
+export interface Connection {
+  id: string
+  fromId: string
+  toId: string
+  fromType: 'question' | 'note'
+  toType: 'question' | 'note'
+  relationshipType?: 'related' | 'derived' | 'referenced' | 'similar'
+  strength?: number // 关系强度 0-1
+  isHighlighted?: boolean
+  isAnimated?: boolean
+}
+
+// AI输入框配置
+export interface AIInputConfig {
+  isVisible: boolean
+  position?: Position
+  placeholder?: string
+  suggestions?: string[]
+}
+
+// 问题处理状态
+export interface QuestionProcessingState {
+  stage: 'idle' | 'analyzing' | 'searching' | 'generating' | 'complete'
+  message: string
+  progress: number
+}
+
+// 画布布局配置
+export interface CanvasLayoutConfig {
+  centerPosition: Position
+  nodeSpacing: number
+  radiusIncrement: number
+  maxRadius: number
+  preferredAngleOffset: number
+}
+
+// 智能布局选项
+export interface SmartLayoutOptions {
+  avoidOverlap: boolean
+  maintainConnections: boolean
+  animateTransition: boolean
+  preserveUserPositions: boolean
 }

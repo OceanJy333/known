@@ -4,6 +4,7 @@ import React, { useState } from 'react'
 import { NotesSidebar } from './notes-sidebar'
 import { CanvasArea } from './canvas'
 import { KnowledgeNote } from '@/types/knowledge'
+import { mockNotes } from '@/data/mockKnowledge'
 
 export function ThinkingMode() {
   const [selectedNote, setSelectedNote] = useState<KnowledgeNote | null>(null)
@@ -23,7 +24,7 @@ export function ThinkingMode() {
         
         {/* 右侧：画布工作区 */}
         <main className="canvas-workspace">
-          <CanvasArea selectedNote={selectedNote} />
+          <CanvasArea selectedNote={selectedNote} knowledgeBase={mockNotes} />
         </main>
       </div>
 
