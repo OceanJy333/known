@@ -39,3 +39,5 @@ next-env.d.ts
 
 # Cline AI assistant files
 /cline/
+
+.pic/

@@ -105,12 +105,6 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     const state = get()
     const id = `card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
     
-    console.log('🎨 [DEBUG] Store: 添加卡片到状态', {
-      noteId,
-      position,
-      cardId: id,
-      currentCardsCount: state.cards.length
-    })
     
     const newCard: CanvasCard = {
       id,
@@ -122,7 +116,6 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       addedAt: new Date()
     }
     
-    console.log('🎨 [DEBUG] Store: 新卡片对象', newCard)
     
     set({
       cards: [...state.cards, newCard],
@@ -130,24 +123,14 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       selectedCardIds: [id] // 自动选中新添加的卡片
     })
     
-    console.log('🎨 [DEBUG] Store: 卡片添加后状态', {
-      totalCards: state.cards.length + 1,
-      newCardsList: [...state.cards, newCard].map(c => ({ id: c.id, noteId: c.noteId }))
-    })
   },
 
   // 批量添加卡片 - 性能优化版本
   addCards: (cardsToAdd) => {
-    console.log('\n🎨🎨🎨 [STORE] addCards 函数被调用:')
-    console.log('   - 传入的卡片数:', cardsToAdd.length)
-    console.log('   - 传入的卡片:', cardsToAdd)
     
     const state = get()
     const timestamp = Date.now()
     
-    console.log('   - 当前画布卡片数:', state.cards.length)
-    console.log('   - 当前卡片列表:', state.cards.map(c => ({ id: c.id, noteId: c.noteId })))
-    console.log('🎨🎨🎨\n')
     
     const newCards: CanvasCard[] = cardsToAdd.map((cardData, index) => {
       const id = `card-${timestamp}-${index}-${Math.random().toString(36).substr(2, 9)}`
@@ -162,7 +145,6 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       }
     })
     
-    console.log('\n🎨 [STORE] 批量创建的卡片:', newCards.map(c => ({ id: c.id, noteId: c.noteId })))
     
     // 一次性更新状态，避免多次重渲染
     set({
@@ -171,15 +153,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       selectedCardIds: newCards.map(c => c.id) // 选中所有新添加的卡片
     })
     
-    console.log('\n✅ [STORE] addCards 状态更新完成:')
-    console.log('   - 更新后画布卡片数:', state.cards.length + newCards.length)
-    console.log('   - 新添加的卡片数:', newCards.length)
-    console.log('✅\n')
     
-    console.log('🎨 [DEBUG] Store: 批量添加完成', {
-      totalCards: state.cards.length + newCards.length,
-      newCardsCount: newCards.length
-    })
   },
 
   // 更新卡片
@@ -478,7 +452,6 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       chatNode.isExpanded = true
     }
 
-    console.log('🎯 [输出节点] 创建新节点:', { id, type: params.type, position: params.position })
 
     set({
       outputNodes: { ...state.outputNodes, [id]: newNode },
@@ -494,7 +467,6 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     const node = state.outputNodes[nodeId]
     if (!node) return
 
-    console.log('🔄 [输出节点] 更新节点:', { nodeId, updates })
 
     set({
       outputNodes: {
@@ -514,7 +486,6 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       conn => conn.fromId !== nodeId && conn.toId !== nodeId
     )
 
-    console.log('🗑️ [输出节点] 删除节点:', { nodeId })
 
     set({
       outputNodes: newOutputNodes,
@@ -525,7 +496,6 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   },
 
   setActiveOutputNode: (nodeId) => {
-    console.log('👆 [输出节点] 设置活跃节点:', { nodeId })
     set({ activeOutputNodeId: nodeId })
   },
 
@@ -540,7 +510,6 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       timestamp: new Date()
     }
 
-    console.log('💬 [输出节点] 添加消息:', { nodeId, messageId: newMessage.id, role: message.role })
 
     set({
       outputNodes: {
@@ -565,7 +534,6 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       createdAt: new Date()
     }
 
-    console.log('🔗 [输出连接] 添加连接:', { connectionId: id, from: connectionData.fromId, to: connectionData.toId })
 
     set({
       outputConnections: [...state.outputConnections, newConnection]
@@ -580,7 +548,6 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         : conn
     )
 
-    console.log('🔄 [输出连接] 更新连接状态:', { connectionId, status })
 
     set({ outputConnections: updatedConnections })
   },
@@ -589,7 +556,6 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     const state = get()
     const newConnections = state.outputConnections.filter(conn => conn.id !== connectionId)
 
-    console.log('🗑️ [输出连接] 删除连接:', { connectionId })
 
     set({ outputConnections: newConnections })
   },
@@ -611,7 +577,6 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         : ConnectionStatus.ACTIVE
 
       get().updateOutputConnection(existingConnection.id, newStatus)
-      console.log('🔄 [上下文] 切换卡片连接:', { nodeId, cardId, newStatus })
     } else {
       // 创建新连接
       get().addOutputConnection({
@@ -622,7 +587,6 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         status: ConnectionStatus.ACTIVE,
         strength: 1.0
       })
-      console.log('➕ [上下文] 添加卡片连接:', { nodeId, cardId })
     }
   },
 

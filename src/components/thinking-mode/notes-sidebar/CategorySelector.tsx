@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
-import { GroupByType } from './NotesSidebar'
+export type GroupByType = 'tags' | 'time' | 'category'
 
 interface CategoryOption {
   id: GroupByType

@@ -75,9 +75,6 @@ export function SearchCard({ value, onChange, onClear }: SearchCardProps) {
               </button>
             )}
           </div>
-          <div className="search-tips">
-            💡 试试: #标签 或 "关键词"
-          </div>
         </div>
       ) : (
         // 折叠状态
@@ -94,7 +91,7 @@ export function SearchCard({ value, onChange, onClear }: SearchCardProps) {
           backdrop-filter: blur(32px) saturate(150%);
           -webkit-backdrop-filter: blur(32px) saturate(150%);
           border: 0.5px solid rgba(255, 255, 255, 0.08);
-          border-radius: 24px;
+          border-radius: 20px;
           transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
           box-shadow: 
             0 24px 64px rgba(0, 0, 0, 0.03),
@@ -135,7 +132,7 @@ export function SearchCard({ value, onChange, onClear }: SearchCardProps) {
         }
 
         .search-card.expanded {
-          padding: 20px;
+          padding: 7px 9px;
         }
 
         .search-expanded {
@@ -150,10 +147,11 @@ export function SearchCard({ value, onChange, onClear }: SearchCardProps) {
 
         .search-icon {
           position: absolute;
-          left: 12px;
+          left: 8px;
           color: rgba(107, 114, 128, 0.6);
           z-index: 1;
           pointer-events: none;
+          font-size: 11px;
         }
 
         .search-input {
@@ -161,10 +159,10 @@ export function SearchCard({ value, onChange, onClear }: SearchCardProps) {
           background: transparent;
           border: none;
           outline: none;
-          padding: 12px 16px 12px 40px;
-          font-size: 14px;
+          padding: 4px 7px 4px 24px;
+          font-size: 13px;
           color: #1f2937;
-          border-radius: 12px;
+          border-radius: 10px;
           transition: background-color 0.2s ease;
         }
 
@@ -178,9 +176,9 @@ export function SearchCard({ value, onChange, onClear }: SearchCardProps) {
 
         .clear-button {
           position: absolute;
-          right: 8px;
-          width: 24px;
-          height: 24px;
+          right: 3px;
+          width: 14px;
+          height: 14px;
           background: rgba(107, 114, 128, 0.1);
           border: none;
           border-radius: 50%;
@@ -190,6 +188,7 @@ export function SearchCard({ value, onChange, onClear }: SearchCardProps) {
           align-items: center;
           justify-content: center;
           transition: all 0.2s ease;
+          font-size: 7px;
         }
 
         .clear-button:hover {
@@ -197,12 +196,6 @@ export function SearchCard({ value, onChange, onClear }: SearchCardProps) {
           color: #374151;
         }
 
-        .search-tips {
-          margin-top: 8px;
-          font-size: 12px;
-          color: rgba(107, 114, 128, 0.7);
-          text-align: center;
-        }
 
         .search-collapsed {
           width: 100%;
@@ -242,16 +235,13 @@ export function SearchCard({ value, onChange, onClear }: SearchCardProps) {
           }
 
           .search-card.expanded {
-            padding: 16px;
+            padding: 5px 7px;
           }
 
           .search-input {
             font-size: 16px; /* 防止iOS放大 */
           }
 
-          .search-tips {
-            font-size: 11px;
-          }
         }
 
         /* 暗色模式支持 */
@@ -277,9 +267,6 @@ export function SearchCard({ value, onChange, onClear }: SearchCardProps) {
             color: rgba(156, 163, 175, 0.6);
           }
 
-          .search-tips {
-            color: rgba(156, 163, 175, 0.7);
-          }
 
           .search-icon,
           .collapsed-icon {

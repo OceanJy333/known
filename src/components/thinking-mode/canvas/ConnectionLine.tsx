@@ -388,11 +388,6 @@ export function ConnectionLayer({
   const convertedOutputConnections: ConnectionData[] = []
   
   if (outputConnections.length > 0 && props.cards && props.outputNodes) {
-    console.log('🔗 [ConnectionLayer] 开始转换输出连接:', {
-      outputConnections: outputConnections.length,
-      cards: props.cards.length,
-      outputNodes: props.outputNodes.length
-    })
     
     outputConnections.forEach(conn => {
       try {
@@ -417,11 +412,6 @@ export function ConnectionLayer({
             isAnimated: conn.status === 'new'
           }
           convertedOutputConnections.push(connectionData)
-          console.log('✅ [ConnectionLayer] 成功转换连接:', {
-            from: conn.fromId,
-            to: conn.toId,
-            status: conn.status
-          })
         } else {
           console.warn('⚠️ [ConnectionLayer] 找不到连接的节点:', {
             fromId: conn.fromId,
@@ -440,15 +430,9 @@ export function ConnectionLayer({
   const allConnections = [...connections, ...convertedOutputConnections]
   
   if (allConnections.length === 0) {
-    console.log('🔗 [ConnectionLayer] 无连接线需要渲染')
     return null
   }
   
-  console.log('🔗 [ConnectionLayer] 渲染连接线:', {
-    originalConnections: connections.length,
-    convertedOutputConnections: convertedOutputConnections.length,
-    totalConnections: allConnections.length
-  })
 
   return (
     <svg

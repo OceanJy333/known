@@ -5,6 +5,7 @@ import { NotesSidebar } from './notes-sidebar'
 import { CanvasArea } from './canvas'
 import { KnowledgeNote } from '@/types/knowledge'
 import { mockNotes } from '@/data/mockKnowledge'
+import type { NodeType } from '@/types/nodeTypes'
 
 export function ThinkingMode() {
   const [selectedNote, setSelectedNote] = useState<KnowledgeNote | null>(null)
@@ -13,13 +14,20 @@ export function ThinkingMode() {
     setSelectedNote(note)
   }
 
+  const handleNodeDragStart = (nodeType: NodeType, event: DragEvent) => {
+    // 可以在这里添加全局的拖拽状态管理
+  }
+
   return (
     <div className="thinking-mode">
       {/* 三栏布局 */}
       <div className="thinking-layout">
         {/* 左侧：笔记管理 */}
         <aside className="notes-sidebar-container">
-          <NotesSidebar onNoteSelect={handleNoteSelect} />
+          <NotesSidebar 
+            onNoteSelect={handleNoteSelect}
+            onNodeDragStart={handleNodeDragStart}
+          />
         </aside>
         
         {/* 右侧：画布工作区 */}

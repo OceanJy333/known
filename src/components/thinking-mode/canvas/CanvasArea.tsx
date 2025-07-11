@@ -13,6 +13,8 @@ import type { AIChatNode } from '@/types/outputNode'
 import { ConnectionStatus } from '@/types/outputNode'
 import { createLayoutEngine } from '@/utils/canvasLayout'
 import { createRelationshipMapper } from '@/utils/relationshipMapping'
+import type { ExtendedDragData } from '@/types/nodeTypes'
+import { getNodeTypeById } from '@/constants/nodeTypes'
 
 interface CanvasAreaProps {
   selectedNote?: KnowledgeNote | null
@@ -56,12 +58,6 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
       }
     })
     
-    console.log('📚 [DEBUG] 创建 knowledgeBase 索引:', {
-      originalSize: knowledgeBase.length,
-      localSize: localKnowledgeBase.length,
-      mapSize: map.size,
-      sampleIds: Array.from(map.keys()).slice(0, 5)
-    })
     return map
   }, [knowledgeBase, localKnowledgeBase])
   
@@ -113,13 +109,11 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
   const handleQuestionSubmit = useCallback(async (question: string, inputPosition?: Position) => {
     if (isProcessingQuestion) return
 
-    console.log('🤔 处理用户问题:', question)
     setIsProcessingQuestion(true)
 
     try {
       // 1. 创建问题节点 - 使用输入框位置或默认中心位置
       const questionPosition = inputPosition || { x: 400, y: 300 }
-      console.log('📍 问题节点位置:', questionPosition)
       const questionId = addQuestionNode(question, questionPosition)
       
       // 设置问题位置到状态中
@@ -173,21 +167,7 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
                   updateQuestionNode(questionId, { answer })
                 } else if (data.type === 'notes' && data.data) {
                   relatedNotes = data.data
-                  console.log('📚 [前端] 收到相关笔记:', {
-                    notesCount: relatedNotes.length,
-                    notesList: relatedNotes.map((note: any) => ({
-                      id: note.id,
-                      title: note.title
-                    })),
-                    timestamp: new Date().toISOString()
-                  })
                 } else if (data.type === 'complete') {
-                  console.log('🎯 [前端] 收到完成事件，准备布局:', {
-                    questionId,
-                    answerLength: answer.length,
-                    relatedNotesCount: relatedNotes.length,
-                    timestamp: new Date().toISOString()
-                  })
                   // 处理完成，开始布局
                   await handleQuestionComplete(questionId, answer, relatedNotes)
                 } else if (data.type === 'error') {
@@ -217,7 +197,6 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
   const handleOutputNodeQuestionSubmit = useCallback(async (question: string, inputPosition?: Position) => {
     if (isProcessingQuestion) return
 
-    console.log('🎯 [输出节点] 处理用户问题:', question)
     setIsProcessingQuestion(true)
 
     try {
@@ -229,22 +208,11 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
         initialQuestion: question
       })
 
-      console.log('🎯 [输出节点] 创建节点:', { nodeId, position: nodePosition })
 
       // 更新节点状态为召回中
       updateOutputNode(nodeId, { status: 'recalling' })
 
       // 2. 调用新的输出节点API
-      console.log('📡 [输出节点] 准备发送API请求:', {
-        question: question.slice(0, 100),
-        knowledgeBaseSize: knowledgeBase.length,
-        knowledgeBaseSample: knowledgeBase.slice(0, 3).map(note => ({
-          id: note.id,
-          title: note.title
-        })),
-        nodeId,
-        nodeType: 'ai-chat'
-      })
       
       const response = await fetch('/api/output-node-stream', {
         method: 'POST',
@@ -280,35 +248,22 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
           if (done) break
 
           const chunk = decoder.decode(value)
-          console.log('🔍 [SSE块] 接收到数据块:', chunk)
           const lines = chunk.split('\n')
-          console.log('🔍 [SSE行] 分割后的行数:', lines.length, lines)
 
           for (const line of lines) {
             if (line.startsWith('data: ')) {
               try {
-                console.log('🔍 [SSE解析] 原始数据行:', line)
                 const data = JSON.parse(line.slice(6))
-                console.log('📨 [输出节点] 收到数据:', data.type, data)
 
                 if (data.type === 'status') {
                   updateOutputNode(nodeId, { status: data.data.status })
                 } else if (data.type === 'recalled_cards') {
                   recalledCards = data.data.cards || []
-                  console.log('\n🔥🔥🔥 [前端收到] 召回卡片事件详情:')
-                  console.log('   - 卡片数量:', recalledCards.length)
-                  console.log('   - 卡片ID列表:', recalledCards.map(c => c.id))
-                  console.log('   - 卡片标题列表:', recalledCards.map(c => c.title))
-                  console.log('   - 当前节点ID:', nodeId)
-                  console.log('   - 原始数据:', data.data)
-                  console.log('🔥🔥🔥\n')
                   
                   // 验证数据完整性
                   if (recalledCards.length > 0) {
-                    console.log('✅ [输出节点] 召回卡片验证通过，调用handleRecalledCards')
                     handleRecalledCards(nodeId, recalledCards)
                   } else {
-                    console.log('⚠️ [输出节点] 召回卡片为空，跳过处理')
                   }
                 } else if (data.type === 'answer_content') {
                   answer += data.data.content
@@ -337,7 +292,6 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
                     contextCards: recalledCards.map(c => c.id)
                   })
 
-                  console.log('✅ [输出节点] 处理完成')
                 }
               } catch (e) {
                 console.warn('解析输出节点SSE数据失败:', e)
@@ -364,7 +318,6 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
 
   // 🔥 通用接口：根据 noteId 添加卡片到画布
   const addCardById = useCallback((noteId: string, position?: Position) => {
-    console.log('🎯 [通用接口] addCardById 被调用:', { noteId, position })
     
     // 1. 验证 noteId 是否存在于知识库
     const note = knowledgeBase.find(n => n.id === noteId)
@@ -399,12 +352,6 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
       finalPosition = getSmartPosition(defaultPosition)
     }
     
-    console.log(`✅ [通用接口] 准备添加卡片:`, {
-      noteId,
-      noteTitle: note.title,
-      position: finalPosition,
-      currentCardsCount: cards.length
-    })
     
     // 5. 调用原始的 addCard 接口（手动拖拽使用的同一个）
     addCard({
@@ -412,50 +359,31 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
       position: finalPosition
     })
     
-    console.log(`✅ [通用接口] addCard 调用完成`)
     return true
   }, [knowledgeBase, cards, getSmartPosition, addCard])
 
   // 处理召回的卡片
   const handleRecalledCards = useCallback(async (nodeId: string, recalledCards: any[]) => {
-    console.log('\n🌟🌟🌟 [handleRecalledCards] 函数被调用:')
-    console.log('   - 节点ID:', nodeId)
-    console.log('   - 卡片数量:', recalledCards.length)
-    console.log('   - 卡片列表:', recalledCards.map(c => ({ id: c.id, title: c.title })))
-    console.log('🌟🌟🌟\n')
     
     if (!recalledCards.length) {
-      console.log('⚠️ [召回处理] 无卡片需要添加')
       return
     }
 
-    console.log('🃏 [召回处理] 开始添加卡片到画布:', {
-      nodeId,
-      recalledCardsCount: recalledCards.length,
-      recalledCards: recalledCards.map(c => ({ id: c.id, title: c.title })),
-      knowledgeBaseSize: knowledgeBase.length,
-      localKnowledgeBaseSize: localKnowledgeBase.length
-    })
     
     // 🔥 关键检查：召回的卡片是否在原始 knowledgeBase 中
-    console.log('🔍 [召回处理] 检查召回卡片在原始知识库中的存在状态:')
     recalledCards.forEach(card => {
       const existsInOriginal = knowledgeBase.find(note => note.id === card.id)
-      console.log(`  - ${card.id}: ${existsInOriginal ? '✅ 存在于原始知识库' : '❌ 不存在于原始知识库'}`)
       if (existsInOriginal) {
-        console.log(`    标题: ${existsInOriginal.title}`)
       }
     })
 
     // 🔥 使用通用接口：直接根据 noteId 添加卡片
-    console.log('🔥 [召回处理] 使用通用 addCardById 接口')
     
     // 🔥 简化逻辑：使用通用接口逐个添加召回的卡片
     let addedCount = 0
     
     for (let i = 0; i < recalledCards.length; i++) {
       const card = recalledCards[i]
-      console.log(`🎯 [召回处理] 尝试添加第${i + 1}张卡片: ${card.id}`)
       
       // 计算卡片位置（围绕输出节点分布）
       const node = outputNodes[nodeId]
@@ -486,7 +414,6 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
       }
     }
     
-    console.log(`✅ [召回处理] 添加完成: ${addedCount}/${recalledCards.length} 张卡片成功添加`)
     
     // 更新节点状态
     if (addedCount > 0) {
@@ -499,7 +426,6 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
 
   // 处理输出节点追问
   const handleOutputNodeFollowUp = useCallback(async (nodeId: string, question: string) => {
-    console.log('💬 [追问] 处理追问:', { nodeId, question })
 
     // 获取当前节点的上下文卡片
     const contextCardIds = getNodeContextCards(nodeId)
@@ -511,10 +437,6 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
     const node = outputNodes[nodeId] as AIChatNode
     const conversationHistory = node?.conversationHistory || []
 
-    console.log('📝 [追问] 上下文:', {
-      contextCards: contextCards.length,
-      historyMessages: conversationHistory.length
-    })
 
     // 更新节点状态
     updateOutputNode(nodeId, { 
@@ -582,7 +504,6 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
                     ...{ currentQuestion: undefined, currentAnswer: undefined } as Partial<AIChatNode>
                   })
 
-                  console.log('✅ [追问] 完成')
                 }
               } catch (e) {
                 console.warn('解析追问SSE数据失败:', e)
@@ -642,13 +563,6 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
     const startTime = performance.now()
     
     try {
-      console.log('✅ [前端布局] 问题处理完成，开始布局', {
-        questionId,
-        answerLength: answer.length,
-        relatedNotesCount: relatedNotesData.length,
-        relatedNotesData,
-        startTime: new Date().toISOString()
-      })
 
       // 设置加载状态
       setQuestionNodeStatus(questionId, 'processing')
@@ -658,10 +572,8 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
       const questionNode = currentState.questionNodes.find(q => q.id === questionId)
       if (!questionNode) {
         console.error('❌ [DEBUG] 找不到问题节点:', questionId)
-        console.log('❌ [DEBUG] 当前问题节点列表:', currentState.questionNodes.map(q => ({ id: q.id, question: q.question })))
         return
       }
-      console.log('🔍 [DEBUG] 找到问题节点:', questionNode)
 
       // 转换为KnowledgeNote格式
       const relatedNotes: KnowledgeNote[] = relatedNotesData.map(noteData => ({
@@ -672,19 +584,16 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
         saveHistory: []
       }))
 
-      console.log('🔄 [DEBUG] 转换后的相关笔记:', relatedNotes)
 
       setQuestionNodeAnswer(questionId, answer, relatedNotes)
 
       // 2. 异步分析关系映射
-      console.log('⏳ [DEBUG] 开始异步关系分析...')
       const relationships = await new Promise<any>((resolve) => {
         const executeAnalysis = () => {
           const result = relationshipMapper.current.analyzeQuestionNoteRelationships(
             questionNode,
             relatedNotes
           )
-          console.log('🔗 [DEBUG] 关系映射结果:', result)
           resolve(result)
         }
         
@@ -697,9 +606,7 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
       })
 
       // 3. 异步生成智能布局
-      console.log('⏳ [DEBUG] 开始异步布局计算...')
       const centerPosition = questionPositions.get(questionId) || { x: 400, y: 300 }
-      console.log('📍 [DEBUG] 中心位置:', centerPosition)
       
       layoutEngine.current.updateConfig({ centerPosition })
       
@@ -710,7 +617,6 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
             relatedNotes,
             [] // 暂时不考虑现有节点
           )
-          console.log('📐 [DEBUG] 布局结果:', result)
           resolve(result)
         }
         
@@ -723,47 +629,26 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
       })
 
       // 4. 添加笔记卡片到画布 - 批量优化版本
-      console.log('🎯 [DEBUG] 开始添加笔记卡片到画布')
-      console.log('🎯 [DEBUG] 当前画布卡片:', currentState.cards)
       
       // 收集所有需要添加的卡片
       const cardsToAdd: { noteId: string; position: Position }[] = []
       
       for (const layoutNode of layoutResult.nodes) {
-        console.log('🔍 [DEBUG] 处理布局节点:', layoutNode)
         
         if (layoutNode.type === 'note') {
           const relatedNote = relatedNotes.find(n => n.id === layoutNode.id)
-          console.log('📝 [DEBUG] 查找相关笔记:', {
-            layoutNodeId: layoutNode.id,
-            foundNote: relatedNote ? '✅ 找到' : '❌ 未找到',
-            noteData: relatedNote
-          })
           
           const existingCard = currentState.cards.some(c => c.noteId === layoutNode.id)
-          console.log('🔍 [DEBUG] 检查是否已存在卡片:', {
-            noteId: layoutNode.id,
-            exists: existingCard,
-            currentCards: currentState.cards.map(c => ({ id: c.id, noteId: c.noteId }))
-          })
           
           if (relatedNote && !existingCard) {
-            console.log('➕ [DEBUG] 准备添加卡片:', {
-              noteId: layoutNode.id,
-              position: layoutNode.position
-            })
             
             cardsToAdd.push({
               noteId: layoutNode.id,
               position: layoutNode.position
             })
           } else {
-            console.log('⚠️ [DEBUG] 跳过添加卡片:', {
-              reason: !relatedNote ? '找不到笔记' : '卡片已存在'
-            })
           }
         } else if (layoutNode.type === 'question') {
-          console.log('❓ [DEBUG] 更新问题节点位置:', layoutNode.position)
           // 更新问题节点位置
           setQuestionPositions(prev => new Map(prev.set(questionId, layoutNode.position)))
         }
@@ -771,16 +656,10 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
       
       // 批量添加所有卡片，避免多次重渲染
       if (cardsToAdd.length > 0) {
-        console.log('🎯 [DEBUG] 批量添加卡片:', {
-          cardsCount: cardsToAdd.length,
-          cards: cardsToAdd
-        })
         
         addCards(cardsToAdd)
         
-        console.log('✅ [DEBUG] 批量添加卡片完成')
       } else {
-        console.log('⚠️ [DEBUG] 没有卡片需要添加')
       }
 
       // 5. 创建连接线
@@ -817,13 +696,6 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
       const endTime = performance.now()
       const layoutDuration = endTime - startTime
       
-      console.log('🎯 [前端布局] 智能布局完成:', {
-        questionId,
-        notesAdded: relatedNotes.length,
-        connectionsAdded: connectionData.length,
-        layoutDuration: `${layoutDuration.toFixed(2)}ms`,
-        endTime: new Date().toISOString()
-      })
 
     } catch (error) {
       console.error('布局处理失败:', error)
@@ -868,7 +740,6 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
   const handleNoteClick = useCallback((noteId: string) => {
     const note = knowledgeBase.find(n => n.id === noteId)
     if (note) {
-      console.log('点击笔记:', note.title)
       // 这里可以添加打开笔记详情的逻辑
     }
   }, [knowledgeBase])
@@ -902,6 +773,57 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
     }
   }, [])
 
+  // 处理节点模板放置
+  const handleNodeTemplateDrop = useCallback((dragData: ExtendedDragData, position: Position) => {
+    const nodeType = getNodeTypeById(dragData.nodeType!)
+    if (!nodeType) {
+      console.error('未知的节点类型:', dragData.nodeType)
+      return
+    }
+
+    const nodeId = `${nodeType.id}-${Date.now()}`
+
+    switch (nodeType.id) {
+      case 'ai-chat':
+        createOutputNode({
+          type: 'ai-chat',
+          position,
+          initialQuestion: dragData.metadata?.title || '',
+          config: {
+            nodeType: 'ai-chat',
+            modelProvider: 'openai',
+            modelName: 'gpt-4o-mini',
+            systemPrompt: `你是一个专业的知识助手。基于用户提供的知识卡片内容，为用户的问题提供准确、有帮助的回答。
+
+回答要求：
+1. 基于提供的知识卡片内容进行回答
+2. 保持客观、准确的语调
+3. 如果知识卡片中没有相关信息，请诚实说明
+4. 提供具体、可操作的建议
+5. 适当引用知识卡片中的关键信息`,
+            outputFormat: 'text',
+            contextStrategy: 'full'
+          }
+        })
+        break
+        
+      case 'html-page':
+        // TODO: 实现HTML页面节点
+        break
+        
+      case 'text-note':
+        // TODO: 实现文本笔记节点
+        break
+        
+      case 'image-node':
+        // TODO: 实现图片节点
+        break
+        
+      default:
+        console.warn('不支持的节点类型:', nodeType.id)
+    }
+  }, [createOutputNode])
+
   // 处理放置
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -909,21 +831,7 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
     setDropIndicatorPos(null)
     
     try {
-      const dragData = JSON.parse(e.dataTransfer.getData('application/json'))
-      
-      if (dragData.type !== 'note') return
-      
-      // 检查是否已存在
-      if (cards.some(card => card.noteId === dragData.noteId)) {
-        console.warn('该笔记已在画布中')
-        return
-      }
-      
-      // 检查数量限制
-      if (cards.length >= CANVAS_CONSTANTS.MAX_CARDS) {
-        console.error('画布已达到最大卡片数量限制')
-        return
-      }
+      const dragData: ExtendedDragData = JSON.parse(e.dataTransfer.getData('application/json'))
       
       if (!canvasRef.current) return
       
@@ -936,15 +844,33 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
       // 获取智能位置
       const finalPosition = getSmartPosition(dropPosition)
       
-      // 添加卡片
-      addCard({
-        noteId: dragData.noteId,
-        position: finalPosition
-      })
+      if (dragData.type === 'node-template') {
+        // 处理节点模板拖拽
+        handleNodeTemplateDrop(dragData, finalPosition)
+      } else if (dragData.type === 'note') {
+        // 处理笔记拖拽（现有逻辑）
+        // 检查是否已存在
+        if (cards.some(card => card.noteId === dragData.id)) {
+          console.warn('该笔记已在画布中')
+          return
+        }
+        
+        // 检查数量限制
+        if (cards.length >= CANVAS_CONSTANTS.MAX_CARDS) {
+          console.error('画布已达到最大卡片数量限制')
+          return
+        }
+        
+        // 添加卡片
+        addCard({
+          noteId: dragData.id,
+          position: finalPosition
+        })
+      }
     } catch (error) {
       console.error('Failed to parse drag data:', error)
     }
-  }, [cards, addCard, getSmartPosition])
+  }, [cards, addCard, getSmartPosition, handleNodeTemplateDrop])
 
   // 处理画布点击（取消选择）
   const handleCanvasClick = useCallback((e: React.MouseEvent) => {
@@ -1210,7 +1136,6 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
           cards={cards}
           outputNodes={Object.values(outputNodes)}
           onConnectionClick={(connectionId) => {
-            console.log('点击连接线:', connectionId)
           }}
           onConnectionHover={(connectionId) => {
             // 处理连接线悬停
@@ -1277,16 +1202,6 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
         )}
 
         {/* 画布卡片 */}
-        {(() => {
-          console.log('🖼️ [DEBUG] 渲染画布卡片:', {
-            cardsCount: cards.length,
-            cards: cards.map(c => ({ id: c.id, noteId: c.noteId, position: c.position })),
-            knowledgeBaseSize: knowledgeBase.length,
-            outputNodesCount: Object.keys(outputNodes).length,
-            outputConnectionsCount: outputConnections.length
-          })
-          return null
-        })()}
         {cards.map(card => (
           <CanvasCard
             key={card.id}

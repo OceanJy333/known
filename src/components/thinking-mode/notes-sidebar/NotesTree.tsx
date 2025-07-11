@@ -3,7 +3,7 @@
 import React, { useMemo } from 'react'
 import { KnowledgeNote } from '@/types/knowledge'
 import { mockTags, mockCategories } from '@/data/mockKnowledge'
-import { GroupByType } from './NotesSidebar'
+import { GroupByType } from './CategorySelector'
 import { NoteItem } from './NoteItem'
 
 interface GroupedNotes {

@@ -35,22 +35,9 @@ function CanvasCardComponent({
   const cardRef = useRef<HTMLDivElement>(null)
   
   // 获取笔记数据 - 使用 Map 索引优化查找性能
-  console.log('🃏 [DEBUG] CanvasCard: 查找笔记数据', {
-    cardId: card.id,
-    noteId: card.noteId,
-    knowledgeBaseSize: knowledgeBaseMap.size,
-    knowledgeBaseIds: Array.from(knowledgeBaseMap.keys()).slice(0, 5),
-    allIds: Array.from(knowledgeBaseMap.keys())
-  })
   
   const note = knowledgeBaseMap.get(card.noteId)
   
-  console.log('🃏 [DEBUG] CanvasCard: 笔记查找结果', {
-    found: !!note,
-    noteData: note ? { id: note.id, title: note.title } : null,
-    searchedId: card.noteId,
-    exactMatch: knowledgeBaseMap.has(card.noteId)
-  })
   
   if (!note) {
     console.error('❌ [DEBUG] CanvasCard: 找不到笔记数据，显示占位卡片', {

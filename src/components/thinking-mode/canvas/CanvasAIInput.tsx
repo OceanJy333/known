@@ -144,11 +144,9 @@ export function CanvasAIInput({
     
     if (!finalQuestion || isLoading) return
 
-    console.log('📝 用户提交问题:', finalQuestion)
     
     // 获取输入框位置
     const inputPosition = getInputPosition()
-    console.log('📍 输入框位置:', inputPosition)
     
     setShowSuggestions(false)
     onQuestionSubmit(finalQuestion, inputPosition)
