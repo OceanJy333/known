@@ -2,19 +2,34 @@
 
 import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { CanvasCard } from './CanvasCard'
-import { CanvasAIInput } from './CanvasAIInput'
+// CanvasAIInput 功能已集成到 CanvasEmptyState 中
 import { QuestionNode, QuestionNodeData } from './QuestionNode'
 import { ConnectionLayer } from './ConnectionLine'
 import { AIChatOutputNode } from './AIChatOutputNode'
+import { SVGCardOutputNode } from './SVGCardOutputNode'
+import { CanvasToolbar } from './CanvasToolbar'
+import { CanvasEmptyState } from './CanvasEmptyState'
+import { DropIndicator } from './DropIndicator'
+import { ConnectionPreview } from './ConnectionPreview'
+import { ConnectionContextMenu } from './ConnectionContextMenu'
+import { ConnectionShortcutsHelp } from './ConnectionShortcutsHelp'
+import { ConnectionHoverCard } from './ConnectionHoverCard'
+import { SVGBatchExportDialog } from './SVGBatchExportDialog'
 import { useCanvasStore } from './canvasStore'
+import { useDragAndDrop } from './useDragAndDrop'
+import { useCanvasKeyboardShortcuts } from './useCanvasKeyboardShortcuts'
+import { useConnectionManager } from './useConnectionManager'
+import { useConnectionKeyboardShortcuts } from './useConnectionKeyboardShortcuts'
+import { useThinkingModeIds } from '@/hooks/useThinkingModeIds'
 import { KnowledgeNote } from '@/types/knowledge'
 import { Position, CanvasCard as CanvasCardType, CANVAS_CONSTANTS, CARD_SIZES } from '@/types/canvas'
-import type { AIChatNode } from '@/types/outputNode'
+import type { AIChatNode, SVGCardNode } from '@/types/outputNode'
 import { ConnectionStatus } from '@/types/outputNode'
 import { createLayoutEngine } from '@/utils/canvasLayout'
 import { createRelationshipMapper } from '@/utils/relationshipMapping'
-import type { ExtendedDragData } from '@/types/nodeTypes'
+import type { ExtendedDragData, NodeType } from '@/types/nodeTypes'
 import { getNodeTypeById } from '@/constants/nodeTypes'
+// import { recallService } from '@/services/recallService' // 移到服务端 API
 
 interface CanvasAreaProps {
   selectedNote?: KnowledgeNote | null
@@ -23,24 +38,79 @@ interface CanvasAreaProps {
 
 export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps) {
   const canvasRef = useRef<HTMLDivElement>(null)
-  const [isDraggingOver, setIsDraggingOver] = useState(false)
-  const [dropIndicatorPos, setDropIndicatorPos] = useState<Position | null>(null)
   const [isProcessingQuestion, setIsProcessingQuestion] = useState(false)
   const [questionPositions, setQuestionPositions] = useState<Map<string, Position>>(new Map())
+  
+  // 客户端召回函数，调用服务端 API
+  const recallCards = useCallback(async (question: string, knowledgeBase: KnowledgeNote[]) => {
+    const response = await fetch('/api/recall-cards', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        question,
+        knowledgeBase,
+        options: {
+          maxResults: 5,
+          relevanceThreshold: 0.6
+        }
+      })
+    })
+    
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.details || '召回服务调用失败')
+    }
+    
+    return await response.json()
+  }, [])
   
   // 画布缩放和平移状态
   const [canvasTransform, setCanvasTransform] = useState({ x: 0, y: 0, scale: 1 })
   const [isPanning, setIsPanning] = useState(false)
   const [panStart, setPanStart] = useState({ x: 0, y: 0 })
-  const [isSpacePressed, setIsSpacePressed] = useState(false)
+  
+  // 触控板手势状态
+  const [isTrackpadGesture, setIsTrackpadGesture] = useState(false)
+  const [lastTouchCount, setLastTouchCount] = useState(0)
+  const [gestureStartTransform, setGestureStartTransform] = useState({ x: 0, y: 0, scale: 1 })
+  const [gestureStartCenter, setGestureStartCenter] = useState({ x: 0, y: 0 })
+  const [initialDistance, setInitialDistance] = useState(0)
   
   // 创建一个本地的知识库管理
   const [localKnowledgeBase, setLocalKnowledgeBase] = useState<KnowledgeNote[]>([])
+  
+  // 连接管理状态
+  const [contextMenuState, setContextMenuState] = useState<{
+    isVisible: boolean
+    position: Position
+    connectionId: string
+    status: ConnectionStatus
+  } | null>(null)
+  
+  // 连线悬停状态
+  const [hoveredConnectionId, setHoveredConnectionId] = useState<string | null>(null)
+  const [hoverCardPosition, setHoverCardPosition] = useState<Position | null>(null)
+  const [currentMousePosition, setCurrentMousePosition] = useState<Position>({ x: 0, y: 0 })
+  
+  // 批量导出对话框状态
+  const [batchExportDialogOpen, setBatchExportDialogOpen] = useState(false)
   
   // 更新本地知识库
   useEffect(() => {
     setLocalKnowledgeBase(knowledgeBase)
   }, [knowledgeBase])
+  
+  // 跟踪鼠标位置
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      setCurrentMousePosition({ x: e.clientX, y: e.clientY })
+    }
+    
+    window.addEventListener('mousemove', handleMouseMove)
+    return () => window.removeEventListener('mousemove', handleMouseMove)
+  }, [])
   
   // 创建 knowledgeBase 的 Map 索引以优化查找性能
   const knowledgeBaseMap = React.useMemo(() => {
@@ -60,6 +130,32 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
     
     return map
   }, [knowledgeBase, localKnowledgeBase])
+  
+  // 使用沉思模式ID管理器
+  const thinkingModeIds = useThinkingModeIds({
+    autoFix: true,
+    debug: process.env.NODE_ENV === 'development',
+    validationInterval: 10000, // 10秒验证一次
+    onError: (error) => {
+      console.error('🚨 [沉思模式ID] 错误:', error)
+    },
+    onWarning: (warning) => {
+      console.warn('⚠️ [沉思模式ID] 警告:', warning)
+    }
+  })
+  
+  // 注册知识库中的所有笔记
+  useEffect(() => {
+    knowledgeBase.forEach(note => {
+      thinkingModeIds.registerNote(note)
+    })
+    
+    localKnowledgeBase.forEach(note => {
+      if (!knowledgeBase.find(n => n.id === note.id)) {
+        thinkingModeIds.registerNote(note)
+      }
+    })
+  }, [knowledgeBase, localKnowledgeBase, thinkingModeIds])
   
   const {
     cards,
@@ -98,12 +194,89 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
     updateOutputConnection,
     removeOutputConnection,
     toggleCardConnection,
-    getNodeContextCards
+    getNodeContextCards,
+    getNodeConnections
   } = useCanvasStore()
+  
+  // 注册画布状态变化
+  useEffect(() => {
+    // 注册所有卡片
+    cards.forEach(card => {
+      thinkingModeIds.registerCard(card)
+    })
+  }, [cards, thinkingModeIds])
+  
+  useEffect(() => {
+    // 注册所有输出节点
+    Object.values(outputNodes).forEach(node => {
+      thinkingModeIds.registerOutputNode(node)
+    })
+  }, [outputNodes, thinkingModeIds])
+  
+  useEffect(() => {
+    // 注册所有输出节点连接
+    outputConnections.forEach(connection => {
+      thinkingModeIds.registerConnection(connection)
+    })
+  }, [outputConnections, thinkingModeIds])
   
   // 创建布局引擎和关系映射器
   const layoutEngine = useRef(createLayoutEngine())
   const relationshipMapper = useRef(createRelationshipMapper())
+
+  // 处理笔记和节点的放置
+  const handleDropNote = useCallback((note: KnowledgeNote, position: Position) => {
+    addCard({ noteId: note.id, position })
+    // addCard 会自动选中新添加的卡片，所以不需要手动调用 selectCard
+  }, [addCard])
+
+  const handleDropNode = useCallback((nodeTypeId: string, position: Position) => {
+    const nodeData = getNodeTypeById(nodeTypeId)
+    if (nodeData) {
+      createOutputNode({
+        type: nodeTypeId,
+        position
+      })
+    }
+  }, [createOutputNode])
+
+  // 使用拖拽处理Hook
+  const {
+    isDraggingOver,
+    dropIndicatorPos,
+    handleDragOver,
+    handleDragLeave,
+    handleDrop
+  } = useDragAndDrop({
+    canvasRef,
+    canvasTransform,
+    onDropNote: handleDropNote,
+    onDropNode: handleDropNode
+  })
+  
+  // 连接管理Hook
+  const {
+    connectionDrag,
+    selectedConnectionId,
+    startConnectionDrag,
+    updateConnectionPreview,
+    completeConnection,
+    cancelConnection,
+    canCreateConnection,
+    toggleConnectionStatus,
+    deleteConnection,
+    selectConnection,
+    getConnectionPointsStatus
+  } = useConnectionManager({ canvasRef, canvasTransform })
+  
+  // 连接键盘快捷键Hook
+  const { shortcuts } = useConnectionKeyboardShortcuts({
+    selectedConnectionId,
+    onDeleteConnection: deleteConnection,
+    onToggleConnectionStatus: toggleConnectionStatus,
+    onDeselectConnection: () => selectConnection(null)
+  })
+
 
   // 处理问题提交
   const handleQuestionSubmit = useCallback(async (question: string, inputPosition?: Position) => {
@@ -193,27 +366,117 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
     }
   }, [isProcessingQuestion, knowledgeBase, addQuestionNode, setQuestionNodeStatus, updateQuestionNode, questionNodes, hideAIInput])
 
-  // 处理输出节点问题提交 - 新的双阶段处理流程
+  // 处理输出节点问题提交 - 使用召回服务的新流程
   const handleOutputNodeQuestionSubmit = useCallback(async (question: string, inputPosition?: Position) => {
     if (isProcessingQuestion) return
 
     setIsProcessingQuestion(true)
+    
+    // 1. 创建AI对话输出节点
+    const nodePosition = inputPosition || { x: 400, y: 300 }
+    const nodeId = createOutputNode({
+      type: 'ai-chat',
+      position: nodePosition,
+      initialQuestion: question
+    })
 
     try {
-      // 1. 创建AI对话输出节点
-      const nodePosition = inputPosition || { x: 400, y: 300 }
-      const nodeId = createOutputNode({
-        type: 'ai-chat',
-        position: nodePosition,
-        initialQuestion: question
-      })
-
-
       // 更新节点状态为召回中
       updateOutputNode(nodeId, { status: 'recalling' })
 
-      // 2. 调用新的输出节点API
+      // 立即添加用户消息到对话历史
+      addMessageToOutputNode(nodeId, {
+        role: 'user',
+        content: question,
+        contextCards: []
+      })
+
+      // 添加空的助手消息，准备流式更新
+      addMessageToOutputNode(nodeId, {
+        role: 'assistant',
+        content: '',
+        contextCards: []
+      })
+
+      // 2. 使用召回服务召回相关卡片
+      console.log('🔍 [画布编排] 开始召回相关卡片')
+      const recallResult = await recallCards(question, knowledgeBase)
       
+      console.log('✅ [画布编排] 召回完成:', {
+        recalledCount: recallResult.cards.length,
+        averageRelevance: recallResult.searchStats.averageRelevance
+      })
+
+      // 3. 添加召回的卡片到画布并连线
+      const addedCardIds = await addRecalledCardsToCanvas(nodeId, recallResult.cards)
+      
+      // 4. 开始AI对话
+      await startAiConversation(nodeId, question, recallResult.cards)
+
+    } catch (error) {
+      console.error('❌ [输出节点] 处理失败:', error)
+      // 更新指定节点为错误状态
+      updateOutputNode(nodeId, { status: 'error' })
+    } finally {
+      setIsProcessingQuestion(false)
+    }
+  }, [isProcessingQuestion, knowledgeBase, createOutputNode, updateOutputNode, addMessageToOutputNode, outputNodes, recallCards])
+
+  // 辅助函数：添加召回的卡片到画布并连线
+  const addRecalledCardsToCanvas = useCallback(async (nodeId: string, recalledCards: any[]) => {
+    const cardIds: string[] = []
+    
+    // 获取节点位置，用于计算卡片位置
+    const node = outputNodes[nodeId]
+    const centerPosition = node ? node.position : { x: 400, y: 300 }
+    
+    for (let i = 0; i < recalledCards.length; i++) {
+      const card = recalledCards[i]
+      
+      // 计算卡片位置（围绕输出节点分布）
+      const angle = (i / recalledCards.length) * 2 * Math.PI
+      const radius = 150
+      const cardPosition = {
+        x: centerPosition.x + Math.cos(angle) * radius,
+        y: centerPosition.y + Math.sin(angle) * radius
+      }
+      
+      // 添加卡片到画布
+      const cardId = await thinkingModeIds.safeAddCard(card.id, cardPosition, addCard)
+      if (cardId) {
+        cardIds.push(cardId)
+        
+        // 创建连线
+        const connectionId = await thinkingModeIds.safeCreateConnection(
+          nodeId,
+          cardId,
+          addOutputConnection
+        )
+        
+        if (connectionId) {
+          console.log('✅ [画布编排] 成功创建连接:', nodeId, '->', cardId)
+        } else {
+          console.warn('⚠️ [画布编排] 创建连接失败:', nodeId, '->', cardId)
+        }
+      }
+    }
+    
+    console.log('📋 [画布编排] 卡片添加完成:', {
+      nodeId,
+      addedCount: cardIds.length,
+      cardIds
+    })
+    
+    return cardIds
+  }, [outputNodes, addCard, addOutputConnection, thinkingModeIds])
+
+  // 辅助函数：开始AI对话
+  const startAiConversation = useCallback(async (nodeId: string, question: string, contextCards: any[]) => {
+    try {
+      // 更新节点状态为生成中
+      updateOutputNode(nodeId, { status: 'generating' })
+      
+      // 调用简化的AI对话API
       const response = await fetch('/api/output-node-stream', {
         method: 'POST',
         headers: {
@@ -221,7 +484,8 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
         },
         body: JSON.stringify({
           question,
-          knowledgeBase: knowledgeBase.slice(0, 50),
+          contextCards,
+          conversationHistory: [],
           nodeId,
           nodeType: 'ai-chat'
         }),
@@ -231,112 +495,91 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
         throw new Error(`HTTP error! status: ${response.status}`)
       }
 
-      if (!response.body) {
-        throw new Error('响应体为空')
+      // 处理流式响应
+      const reader = response.body!.getReader()
+      const decoder = new TextDecoder()
+      let answer = ''
+
+      // 更新最后一条助手消息的函数
+      const updateLastMessage = () => {
+        const currentState = useCanvasStore.getState()
+        const currentNode = currentState.outputNodes[nodeId]
+        
+        if (currentNode && currentNode.conversationHistory.length > 0) {
+          const messages = [...currentNode.conversationHistory]
+          const lastMessageIndex = messages.length - 1
+          const lastMessage = messages[lastMessageIndex]
+          
+          if (lastMessage && lastMessage.role === 'assistant') {
+            messages[lastMessageIndex] = {
+              ...lastMessage,
+              content: answer,
+              contextCards: contextCards.map(c => c.id)
+            }
+            
+            updateOutputNode(nodeId, {
+              conversationHistory: messages
+            })
+          }
+        }
       }
 
-      // 3. 处理流式响应
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
+      // 处理流式响应
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
 
-      let answer = ''
-      let recalledCards: any[] = []
+        const chunk = decoder.decode(value)
+        const lines = chunk.split('\n')
 
-      try {
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-
-          const chunk = decoder.decode(value)
-          const lines = chunk.split('\n')
-
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              try {
-                const data = JSON.parse(line.slice(6))
-
-                if (data.type === 'status') {
-                  updateOutputNode(nodeId, { status: data.data.status })
-                } else if (data.type === 'recalled_cards') {
-                  recalledCards = data.data.cards || []
-                  
-                  // 验证数据完整性
-                  if (recalledCards.length > 0) {
-                    handleRecalledCards(nodeId, recalledCards)
-                  } else {
-                  }
-                } else if (data.type === 'answer_content') {
-                  answer += data.data.content
-                  // 更新节点的当前回答
-                  updateOutputNode(nodeId, { 
-                    ...{ currentAnswer: answer } as Partial<AIChatNode>,
-                    status: 'generating'
-                  })
-                } else if (data.type === 'complete') {
-                  // 完成处理
-                  updateOutputNode(nodeId, { 
-                    status: 'completed',
-                    ...{ currentAnswer: answer } as Partial<AIChatNode>
-                  })
-                  
-                  // 将问答添加到对话历史
-                  addMessageToOutputNode(nodeId, {
-                    role: 'user',
-                    content: question,
-                    contextCards: recalledCards.map(c => c.id)
-                  })
-                  
-                  addMessageToOutputNode(nodeId, {
-                    role: 'assistant',
-                    content: answer,
-                    contextCards: recalledCards.map(c => c.id)
-                  })
-
-                }
-              } catch (e) {
-                console.warn('解析输出节点SSE数据失败:', e)
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6))
+              
+              if (data.type === 'answer_content') {
+                answer += data.data.content
+                updateLastMessage()
+              } else if (data.type === 'complete') {
+                // 对话完成
+                updateOutputNode(nodeId, { status: 'completed' })
+                console.log('✅ [画布编排] AI对话完成:', { nodeId, answerLength: answer.length })
               }
+            } catch (e) {
+              console.warn('解析流式响应失败:', e)
             }
           }
         }
-      } finally {
-        reader.releaseLock()
       }
-
     } catch (error) {
-      console.error('❌ [输出节点] 处理失败:', error)
-      // 更新节点为错误状态
-      const currentNodes = Object.values(outputNodes)
-      const latestNode = currentNodes[currentNodes.length - 1]
-      if (latestNode) {
-        updateOutputNode(latestNode.id, { status: 'error' })
-      }
-    } finally {
-      setIsProcessingQuestion(false)
+      console.error('❌ [画布编排] AI对话失败:', error)
+      updateOutputNode(nodeId, { status: 'error' })
+      throw error
     }
-  }, [isProcessingQuestion, knowledgeBase, createOutputNode, updateOutputNode, addMessageToOutputNode, outputNodes])
+  }, [updateOutputNode])
 
-  // 🔥 通用接口：根据 noteId 添加卡片到画布
-  const addCardById = useCallback((noteId: string, position?: Position) => {
+  // 🔥 通用接口：根据 noteId 添加卡片到画布，返回创建的卡片ID
+  const addCardById = useCallback((noteId: string, position?: Position): string | null => {
     
     // 1. 验证 noteId 是否存在于知识库
     const note = knowledgeBase.find(n => n.id === noteId)
     if (!note) {
       console.error(`❌ [通用接口] noteId ${noteId} 不存在于知识库中`)
       console.error(`❌ [通用接口] 可用的 noteId:`, knowledgeBase.slice(0, 10).map(n => n.id))
-      return false
+      return null
     }
     
     // 2. 检查是否已存在于画布
-    if (cards.some(card => card.noteId === noteId)) {
+    const existingCard = cards.find(card => card.noteId === noteId)
+    if (existingCard) {
       console.warn(`⚠️ [通用接口] noteId ${noteId} 已存在于画布中`)
-      return false
+      return existingCard.id // 返回已存在的卡片ID
     }
     
     // 3. 检查数量限制
     if (cards.length >= CANVAS_CONSTANTS.MAX_CARDS) {
       console.error(`❌ [通用接口] 画布已达到最大卡片数量限制 (${CANVAS_CONSTANTS.MAX_CARDS})`)
-      return false
+      return null
     }
     
     // 4. 确定位置
@@ -354,75 +597,13 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
     
     
     // 5. 调用原始的 addCard 接口（手动拖拽使用的同一个）
-    addCard({
+    const cardId = addCard({
       noteId,
       position: finalPosition
     })
     
-    return true
+    return cardId
   }, [knowledgeBase, cards, getSmartPosition, addCard])
-
-  // 处理召回的卡片
-  const handleRecalledCards = useCallback(async (nodeId: string, recalledCards: any[]) => {
-    
-    if (!recalledCards.length) {
-      return
-    }
-
-    
-    // 🔥 关键检查：召回的卡片是否在原始 knowledgeBase 中
-    recalledCards.forEach(card => {
-      const existsInOriginal = knowledgeBase.find(note => note.id === card.id)
-      if (existsInOriginal) {
-      }
-    })
-
-    // 🔥 使用通用接口：直接根据 noteId 添加卡片
-    
-    // 🔥 简化逻辑：使用通用接口逐个添加召回的卡片
-    let addedCount = 0
-    
-    for (let i = 0; i < recalledCards.length; i++) {
-      const card = recalledCards[i]
-      
-      // 计算卡片位置（围绕输出节点分布）
-      const node = outputNodes[nodeId]
-      const centerPosition = node ? node.position : { x: 400, y: 300 }
-      
-      const angle = (i / recalledCards.length) * 2 * Math.PI
-      const radius = 150
-      const cardPosition = {
-        x: centerPosition.x + Math.cos(angle) * radius,
-        y: centerPosition.y + Math.sin(angle) * radius
-      }
-      
-      // 使用通用接口添加卡片
-      const success = addCardById(card.id, cardPosition)
-      if (success) {
-        addedCount++
-        
-        // 创建连接线
-        const connection = {
-          fromId: nodeId,
-          toId: card.id,
-          fromType: 'outputNode' as const,
-          toType: 'card' as const,
-          status: ConnectionStatus.ACTIVE,
-          strength: 1.0
-        }
-        addOutputConnection(connection)
-      }
-    }
-    
-    
-    // 更新节点状态
-    if (addedCount > 0) {
-      updateOutputNode(nodeId, {
-        ...{ recalledCards, contextCards: recalledCards } as Partial<AIChatNode>
-      })
-    }
-
-  }, [outputNodes, addCardById, addOutputConnection, updateOutputNode])
 
   // 处理输出节点追问
   const handleOutputNodeFollowUp = useCallback(async (nodeId: string, question: string) => {
@@ -438,10 +619,23 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
     const conversationHistory = node?.conversationHistory || []
 
 
+    // 立即添加用户消息到对话历史
+    addMessageToOutputNode(nodeId, {
+      role: 'user',
+      content: question,
+      contextCards: contextCardIds
+    })
+
+    // 添加空的助手消息，准备流式更新
+    addMessageToOutputNode(nodeId, {
+      role: 'assistant',
+      content: '',
+      contextCards: contextCardIds
+    })
+
     // 更新节点状态
     updateOutputNode(nodeId, { 
-      status: 'generating',
-      ...{ currentQuestion: question } as Partial<AIChatNode>
+      status: 'generating'
     })
 
     try {
@@ -469,6 +663,37 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
       const decoder = new TextDecoder()
       let answer = ''
 
+      // 更新最后一条助手消息的函数
+      const updateLastMessage = () => {
+        // 使用 getState() 获取最新状态，避免闭包问题
+        const currentState = useCanvasStore.getState()
+        const currentNode = currentState.outputNodes[nodeId]
+        
+        if (currentNode && currentNode.conversationHistory.length > 0) {
+          const messages = [...currentNode.conversationHistory]
+          const lastMessageIndex = messages.length - 1
+          const lastMessage = messages[lastMessageIndex]
+          
+          if (lastMessage && lastMessage.role === 'assistant') {
+            messages[lastMessageIndex] = {
+              ...lastMessage,
+              content: answer,
+              contextCards: contextCardIds
+            }
+            
+            console.log('🔄 [更新消息] 更新助手消息内容 (追问):', {
+              nodeId,
+              contentLength: answer.length,
+              messageIndex: lastMessageIndex
+            })
+            
+            updateOutputNode(nodeId, {
+              conversationHistory: messages
+            })
+          }
+        }
+      }
+
       try {
         while (true) {
           const { done, value } = await reader.read()
@@ -484,26 +709,19 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
                 
                 if (data.type === 'answer_content') {
                   answer += data.data.content
-                  updateOutputNode(nodeId, { ...{ currentAnswer: answer } as Partial<AIChatNode> })
+                  console.log('📝 [流式内容] 收到内容片段:', { 
+                    nodeId, 
+                    contentLength: data.data.content.length,
+                    totalLength: answer.length 
+                  })
+                  // 更新正在生成的助手消息
+                  updateLastMessage()
                 } else if (data.type === 'complete') {
-                  // 添加到对话历史
-                  addMessageToOutputNode(nodeId, {
-                    role: 'user',
-                    content: question,
-                    contextCards: contextCardIds
-                  })
-                  
-                  addMessageToOutputNode(nodeId, {
-                    role: 'assistant',
-                    content: answer,
-                    contextCards: contextCardIds
-                  })
-
+                  // 生成完成，设置状态
+                  console.log('🏁 [流式完成] 完成事件, 总内容长度:', answer.length)
                   updateOutputNode(nodeId, { 
-                    status: 'completed',
-                    ...{ currentQuestion: undefined, currentAnswer: undefined } as Partial<AIChatNode>
+                    status: 'completed'
                   })
-
                 }
               } catch (e) {
                 console.warn('解析追问SSE数据失败:', e)
@@ -520,6 +738,128 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
       updateOutputNode(nodeId, { status: 'error' })
     }
   }, [outputNodes, getNodeContextCards, knowledgeBaseMap, updateOutputNode, addMessageToOutputNode])
+
+  // 处理SVG卡片生成
+  const handleSVGCardGeneration = useCallback(async (nodeId: string, cardIds: string[]) => {
+    try {
+      // 获取知识卡片数据
+      const knowledgeCards = cardIds
+        .map(cardId => knowledgeBaseMap.get(cardId))
+        .filter(Boolean)
+
+      if (knowledgeCards.length === 0) {
+        console.warn('没有找到有效的知识卡片')
+        return
+      }
+
+      console.log('🎨 [SVG卡片生成] 开始:', { nodeId, cardsCount: knowledgeCards.length })
+
+      // 更新节点状态
+      updateOutputNode(nodeId, {
+        status: 'extracting',
+        sourceCardIds: cardIds
+      } as Partial<SVGCardNode>)
+
+      // 调用SVG生成API
+      const response = await fetch('/api/svg-card-stream', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          nodeId,
+          knowledgeCards,
+          template: 'modern' // 默认模板
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`API请求失败: ${response.status}`)
+      }
+
+      const reader = response.body?.getReader()
+      if (!reader) {
+        throw new Error('无法获取响应流')
+      }
+
+      // 处理流式响应
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = new TextDecoder().decode(value)
+        const lines = chunk.split('\n').filter(line => line.trim().startsWith('data:'))
+
+        for (const line of lines) {
+          try {
+            const jsonStr = line.replace('data: ', '')
+            const data = JSON.parse(jsonStr)
+
+            switch (data.type) {
+              case 'status':
+                updateOutputNode(nodeId, { status: data.data.status } as Partial<SVGCardNode>)
+                break
+              
+              case 'content_extracted':
+                updateOutputNode(nodeId, { 
+                  extractedContent: data.data.extractedContent 
+                } as Partial<SVGCardNode>)
+                break
+              
+              case 'svg_generated':
+                updateOutputNode(nodeId, { 
+                  status: 'completed',
+                  svgContent: data.data.svgContent,
+                  template: data.data.template || 'modern'
+                } as Partial<SVGCardNode>)
+                break
+              
+              case 'error':
+                console.error('❌ [SVG生成] API错误:', data.message)
+                updateOutputNode(nodeId, { status: 'error' } as Partial<SVGCardNode>)
+                break
+              
+              case 'complete':
+                console.log('✅ [SVG生成] 完成')
+                break
+            }
+          } catch (e) {
+            console.warn('解析SVG生成数据失败:', e)
+          }
+        }
+      }
+
+      reader.releaseLock()
+
+    } catch (error) {
+      console.error('❌ [SVG卡片生成] 失败:', error)
+      updateOutputNode(nodeId, { status: 'error' } as Partial<SVGCardNode>)
+    }
+  }, [knowledgeBaseMap, updateOutputNode])
+
+  // 处理SVG卡片模板切换
+  const handleSVGTemplateChange = useCallback(async (nodeId: string, template: string) => {
+    const node = outputNodes[nodeId] as SVGCardNode
+    if (!node || node.type !== 'svg-card' || !node.sourceCardIds?.length) return
+
+    // 重新生成SVG卡片
+    console.log('🔄 [模板切换] 重新生成SVG卡片:', { nodeId, template })
+    
+    // 先更新模板
+    updateOutputNode(nodeId, { template } as Partial<SVGCardNode>)
+    
+    // 重新生成
+    await handleSVGCardGeneration(nodeId, node.sourceCardIds)
+  }, [outputNodes, updateOutputNode, handleSVGCardGeneration])
+
+  // 处理SVG卡片重新生成
+  const handleSVGRegenerate = useCallback(async (nodeId: string) => {
+    const node = outputNodes[nodeId] as SVGCardNode
+    if (!node || node.type !== 'svg-card' || !node.sourceCardIds?.length) return
+
+    console.log('🔄 [SVG重新生成]:', nodeId)
+    await handleSVGCardGeneration(nodeId, node.sourceCardIds)
+  }, [outputNodes, handleSVGCardGeneration])
 
   // 处理问题完成
   // 时间分片处理复杂计算
@@ -744,144 +1084,126 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
     }
   }, [knowledgeBase])
 
-  // 处理拖拽进入
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.dataTransfer.dropEffect = 'copy'
-    
-    if (!canvasRef.current) return
-    
-    const rect = canvasRef.current.getBoundingClientRect()
-    const position = {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top
-    }
-    
-    setIsDraggingOver(true)
-    
-    // 更新放置指示器位置
-    const smartPos = getSmartPosition(position)
-    setDropIndicatorPos(smartPos)
-  }, [getSmartPosition])
-
-  // 处理拖拽离开
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    // 确保是离开画布而不是子元素
-    if (e.currentTarget === e.target) {
-      setIsDraggingOver(false)
-      setDropIndicatorPos(null)
-    }
-  }, [])
-
-  // 处理节点模板放置
-  const handleNodeTemplateDrop = useCallback((dragData: ExtendedDragData, position: Position) => {
-    const nodeType = getNodeTypeById(dragData.nodeType!)
-    if (!nodeType) {
-      console.error('未知的节点类型:', dragData.nodeType)
-      return
-    }
-
-    const nodeId = `${nodeType.id}-${Date.now()}`
-
-    switch (nodeType.id) {
-      case 'ai-chat':
-        createOutputNode({
-          type: 'ai-chat',
-          position,
-          initialQuestion: dragData.metadata?.title || '',
-          config: {
-            nodeType: 'ai-chat',
-            modelProvider: 'openai',
-            modelName: 'gpt-4o-mini',
-            systemPrompt: `你是一个专业的知识助手。基于用户提供的知识卡片内容，为用户的问题提供准确、有帮助的回答。
-
-回答要求：
-1. 基于提供的知识卡片内容进行回答
-2. 保持客观、准确的语调
-3. 如果知识卡片中没有相关信息，请诚实说明
-4. 提供具体、可操作的建议
-5. 适当引用知识卡片中的关键信息`,
-            outputFormat: 'text',
-            contextStrategy: 'full'
-          }
-        })
-        break
-        
-      case 'html-page':
-        // TODO: 实现HTML页面节点
-        break
-        
-      case 'text-note':
-        // TODO: 实现文本笔记节点
-        break
-        
-      case 'image-node':
-        // TODO: 实现图片节点
-        break
-        
-      default:
-        console.warn('不支持的节点类型:', nodeType.id)
-    }
-  }, [createOutputNode])
-
-  // 处理放置
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    setIsDraggingOver(false)
-    setDropIndicatorPos(null)
-    
-    try {
-      const dragData: ExtendedDragData = JSON.parse(e.dataTransfer.getData('application/json'))
-      
-      if (!canvasRef.current) return
-      
-      const rect = canvasRef.current.getBoundingClientRect()
-      const dropPosition = {
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top
-      }
-      
-      // 获取智能位置
-      const finalPosition = getSmartPosition(dropPosition)
-      
-      if (dragData.type === 'node-template') {
-        // 处理节点模板拖拽
-        handleNodeTemplateDrop(dragData, finalPosition)
-      } else if (dragData.type === 'note') {
-        // 处理笔记拖拽（现有逻辑）
-        // 检查是否已存在
-        if (cards.some(card => card.noteId === dragData.id)) {
-          console.warn('该笔记已在画布中')
-          return
-        }
-        
-        // 检查数量限制
-        if (cards.length >= CANVAS_CONSTANTS.MAX_CARDS) {
-          console.error('画布已达到最大卡片数量限制')
-          return
-        }
-        
-        // 添加卡片
-        addCard({
-          noteId: dragData.id,
-          position: finalPosition
-        })
-      }
-    } catch (error) {
-      console.error('Failed to parse drag data:', error)
-    }
-  }, [cards, addCard, getSmartPosition, handleNodeTemplateDrop])
 
   // 处理画布点击（取消选择）
   const handleCanvasClick = useCallback((e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
       clearSelection()
+      selectConnection(null)
+      setContextMenuState(null)
     }
-  }, [clearSelection])
+  }, [clearSelection, selectConnection])
+  
+  // 处理连接点拖拽开始
+  const handleConnectionStart = useCallback((cardId: string, position: Position) => {
+    startConnectionDrag(cardId, position)
+  }, [startConnectionDrag])
+  
+  // 处理连接点点击（管理连接）
+  const handleConnectionPointClick = useCallback((cardId: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    // TODO: 显示连接管理面板
+    console.log('连接点点击:', cardId)
+  }, [])
+  
+  // 处理连接线点击
+  const handleConnectionClick = useCallback((connectionId: string) => {
+    console.log('📌 连接线点击:', connectionId)
+    selectConnection(connectionId)
+    setContextMenuState(null)
+  }, [selectConnection])
+  
+  // 处理连接线双击（快速切换状态）
+  const handleConnectionDoubleClick = useCallback((connectionId: string) => {
+    toggleConnectionStatus(connectionId)
+  }, [toggleConnectionStatus])
+  
+  // 处理连接线右键（显示菜单）
+  const handleConnectionRightClick = useCallback((connectionId: string, e: React.MouseEvent) => {
+    const connections = getNodeConnections()
+    const connection = connections.find(conn => conn.id === connectionId)
+    
+    if (connection) {
+      setContextMenuState({
+        isVisible: true,
+        position: { x: e.clientX, y: e.clientY },
+        connectionId,
+        status: connection.status
+      })
+    }
+  }, [getNodeConnections])
+  
+  // 处理连接线悬停
+  const handleConnectionHover = useCallback((connectionId: string | null) => {
+    setHoveredConnectionId(connectionId)
+    if (connectionId) {
+      // 使用当前鼠标位置来定位悬停卡片
+      setHoverCardPosition(currentMousePosition)
+    } else {
+      setHoverCardPosition(null)
+    }
+  }, [currentMousePosition])
+  
+  // 处理连接菜单状态改变
+  const handleConnectionStatusChange = useCallback((connectionId: string, newStatus: ConnectionStatus) => {
+    updateOutputConnection(connectionId, newStatus)
+  }, [updateOutputConnection])
+  
+  // 处理批量导出
+  const handleBatchExport = useCallback(() => {
+    setBatchExportDialogOpen(true)
+  }, [])
+  
+  // 获取所有SVG节点
+  const svgNodes = React.useMemo(() => {
+    return Object.values(outputNodes).filter(node => node.type === 'svg-card') as SVGCardNode[]
+  }, [outputNodes])
+  
+  // 处理连接删除
+  const handleConnectionDelete = useCallback((connectionId: string) => {
+    deleteConnection(connectionId)
+  }, [deleteConnection])
+  
+  // 关闭连接菜单
+  const handleCloseContextMenu = useCallback(() => {
+    setContextMenuState(null)
+  }, [])
+
+  // 检测是否为Mac触控板
+  const isMacTrackpad = useCallback(() => {
+    return navigator.userAgent.includes('Mac') && 
+           ('ontouchstart' in window || navigator.maxTouchPoints > 0)
+  }, [])
+  
   
   // 处理画布滚轮缩放
   const handleWheel = useCallback((e: React.WheelEvent) => {
-    if (e.ctrlKey || e.metaKey) {
+    // 检查滚动事件是否发生在AI对话节点内部
+    const target = e.target as HTMLElement
+    const isInAIChatNode = target.closest('.ai-chat-content') || 
+                          target.closest('.chat-messages') ||
+                          target.closest('.ai-input-card') ||
+                          target.closest('.suggestions-panel') ||
+                          target.closest('.output-node')
+    
+    // 如果在AI对话节点内部，不处理画布滚动
+    if (isInAIChatNode) {
+      return
+    }
+    
+    // 更宽松的Mac触控板检测
+    const isMacTrackpad = navigator.userAgent.includes('Mac') && 
+                         // 触控板通常有更精细的滚动值，而且同时有X和Y方向的滚动
+                         (e.deltaMode === 0) // DOM_DELTA_PIXEL 模式，触控板特征
+    
+    // Mac触控板双指缩放检测：通常包含ctrlKey或者有较大的deltaY变化
+    const isMacTrackpadZoom = isMacTrackpad && (
+      e.ctrlKey || // 明确的缩放手势
+      (Math.abs(e.deltaY) > Math.abs(e.deltaX) * 3 && Math.abs(e.deltaY) > 10) // 主要是Y方向的大幅滚动
+    )
+    
+    if (e.ctrlKey || e.metaKey || isMacTrackpadZoom) {
+      // 缩放手势 (Ctrl/Cmd + 滚轮 或 触控板双指缩放)
       e.preventDefault()
       
       const rect = canvasRef.current?.getBoundingClientRect()
@@ -905,13 +1227,27 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
         y: prev.y + offsetY,
         scale: newScale
       }))
+    } else if (isMacTrackpad && !e.shiftKey) {
+      // Mac触控板双指平移 - 支持X和Y方向的平移
+      e.preventDefault()
+      setCanvasTransform(prev => ({
+        ...prev,
+        x: prev.x - e.deltaX,
+        y: prev.y - e.deltaY
+      }))
     }
   }, [canvasTransform])
   
   // 处理画布平移
   const handleCanvasMouseDown = useCallback((e: React.MouseEvent) => {
-    // 空格+左键或中键开始平移
-    if ((isSpacePressed && e.button === 0) || e.button === 1) {
+    // 检查是否点击的是画布空白区域（非卡片、非节点）
+    const target = e.target as HTMLElement
+    const isCanvasBackground = target.classList.contains('canvas-area') || 
+                              target.classList.contains('canvas-content') ||
+                              target.classList.contains('canvas-grid')
+    
+    // 中键或者Shift+左键开始平移
+    if (e.button === 1 || (e.button === 0 && e.shiftKey && isCanvasBackground)) {
       e.preventDefault()
       setIsPanning(true)
       setPanStart({ x: e.clientX - canvasTransform.x, y: e.clientY - canvasTransform.y })
@@ -921,10 +1257,14 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
         canvasRef.current.style.cursor = 'grabbing'
       }
     }
-  }, [isSpacePressed, canvasTransform])
+    
+    // 关闭连接菜单
+    setContextMenuState(null)
+  }, [canvasTransform])
   
   const handleCanvasMouseMove = useCallback((e: React.MouseEvent) => {
     if (isPanning) {
+      e.preventDefault()
       const newX = e.clientX - panStart.x
       const newY = e.clientY - panStart.y
       
@@ -934,18 +1274,242 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
         y: newY
       }))
     }
-  }, [isPanning, panStart])
+    
+    // 更新连接预览
+    if (connectionDrag.isActive) {
+      updateConnectionPreview(e)
+    }
+  }, [isPanning, panStart, connectionDrag.isActive, updateConnectionPreview])
   
   const handleCanvasMouseUp = useCallback(() => {
     setIsPanning(false)
     
     // 恢复鼠标样式
     if (canvasRef.current) {
-      canvasRef.current.style.cursor = isSpacePressed ? 'grab' : 'default'
+      canvasRef.current.style.cursor = 'default'
     }
-  }, [isSpacePressed])
+    
+    // 取消连接创建
+    if (connectionDrag.isActive) {
+      cancelConnection()
+    }
+  }, [connectionDrag.isActive, cancelConnection])
+
+  // 处理触控板手势开始
+  const handleGestureStart = useCallback((e: React.TouchEvent) => {
+    // 只在Mac系统上处理触控板手势
+    if (!isMacTrackpad()) return
+    
+    // 检查触摸事件是否发生在AI对话节点内部
+    const target = e.target as HTMLElement
+    const isInAIChatNode = target.closest('.ai-chat-content') || 
+                          target.closest('.chat-messages') ||
+                          target.closest('.ai-input-card') ||
+                          target.closest('.suggestions-panel') ||
+                          target.closest('.output-node')
+    
+    // 如果在AI对话节点内部，不处理画布手势
+    if (isInAIChatNode) {
+      return
+    }
+    
+    if (e.touches.length >= 2) {
+      e.preventDefault()
+      setIsTrackpadGesture(true)
+      setGestureStartTransform(canvasTransform)
+      setLastTouchCount(e.touches.length)
+      
+      // 计算初始中心点
+      if (e.touches.length === 3) {
+        const centerX = (e.touches[0].clientX + e.touches[1].clientX + e.touches[2].clientX) / 3
+        const centerY = (e.touches[0].clientY + e.touches[1].clientY + e.touches[2].clientY) / 3
+        setGestureStartCenter({ x: centerX, y: centerY })
+      } else if (e.touches.length === 2) {
+        const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2
+        const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2
+        setGestureStartCenter({ x: centerX, y: centerY })
+        
+        // 计算初始距离
+        const distance = Math.sqrt(
+          Math.pow(e.touches[1].clientX - e.touches[0].clientX, 2) + 
+          Math.pow(e.touches[1].clientY - e.touches[0].clientY, 2)
+        )
+        setInitialDistance(distance)
+      }
+    }
+  }, [canvasTransform, isMacTrackpad])
+
+  // 处理触控板手势变化
+  const handleGestureChange = useCallback((e: React.TouchEvent) => {
+    // 只在Mac系统上处理触控板手势
+    if (!isMacTrackpad()) return
+    if (!isTrackpadGesture || e.touches.length < 2) return
+    
+    // 检查触摸事件是否发生在AI对话节点内部
+    const target = e.target as HTMLElement
+    const isInAIChatNode = target.closest('.ai-chat-content') || 
+                          target.closest('.chat-messages') ||
+                          target.closest('.ai-input-card') ||
+                          target.closest('.suggestions-panel') ||
+                          target.closest('.output-node')
+    
+    // 如果在AI对话节点内部，不处理画布手势
+    if (isInAIChatNode) {
+      return
+    }
+    
+    e.preventDefault()
+    
+    // 三指拖拽
+    if (e.touches.length === 3) {
+      const touch1 = e.touches[0]
+      const touch2 = e.touches[1]
+      const touch3 = e.touches[2]
+      
+      const currentCenterX = (touch1.clientX + touch2.clientX + touch3.clientX) / 3
+      const currentCenterY = (touch1.clientY + touch2.clientY + touch3.clientY) / 3
+      
+      // 计算相对于手势开始时的位移
+      const deltaX = currentCenterX - gestureStartCenter.x
+      const deltaY = currentCenterY - gestureStartCenter.y
+      
+      setCanvasTransform(prev => ({
+        ...prev,
+        x: gestureStartTransform.x + deltaX,
+        y: gestureStartTransform.y + deltaY
+      }))
+    }
+    // 双指缩放
+    else if (e.touches.length === 2) {
+      const touch1 = e.touches[0]
+      const touch2 = e.touches[1]
+      
+      const currentDistance = Math.sqrt(
+        Math.pow(touch2.clientX - touch1.clientX, 2) + 
+        Math.pow(touch2.clientY - touch1.clientY, 2)
+      )
+      
+      // 计算缩放比例
+      const scaleRatio = currentDistance / initialDistance
+      const newScale = Math.min(Math.max(gestureStartTransform.scale * scaleRatio, 0.1), 3)
+      
+      // 计算缩放中心点
+      const currentCenterX = (touch1.clientX + touch2.clientX) / 2
+      const currentCenterY = (touch1.clientY + touch2.clientY) / 2
+      
+      // 以手势中心点为缩放中心
+      const scaleDiff = newScale - gestureStartTransform.scale
+      const offsetX = -(currentCenterX * scaleDiff)
+      const offsetY = -(currentCenterY * scaleDiff)
+      
+      setCanvasTransform(prev => ({
+        x: gestureStartTransform.x + offsetX,
+        y: gestureStartTransform.y + offsetY,
+        scale: newScale
+      }))
+    }
+  }, [isTrackpadGesture, gestureStartTransform, gestureStartCenter, initialDistance, isMacTrackpad])
+
+  // 处理触控板手势结束
+  const handleGestureEnd = useCallback(() => {
+    setIsTrackpadGesture(false)
+    setLastTouchCount(0)
+    setGestureStartCenter({ x: 0, y: 0 })
+    setInitialDistance(0)
+  }, [])
+
+  // 处理Safari的gesture事件（防止网页缩放）
+  const handleSafariGesture = useCallback((e: any) => {
+    // 阻止Safari默认的手势缩放
+    e.preventDefault()
+    
+    // 检查是否在AI对话节点内部
+    const target = e.target as HTMLElement
+    const isInAIChatNode = target.closest('.ai-chat-content') || 
+                          target.closest('.chat-messages') ||
+                          target.closest('.ai-input-card') ||
+                          target.closest('.suggestions-panel') ||
+                          target.closest('.output-node')
+    
+    // 如果在AI对话节点内部，不处理画布缩放
+    if (isInAIChatNode) {
+      return
+    }
+    
+    // 处理画布缩放
+    if (e.scale && e.scale !== 1) {
+      const rect = canvasRef.current?.getBoundingClientRect()
+      if (!rect) return
+      
+      // 计算手势中心点
+      const centerX = (e.clientX || rect.width / 2) - rect.left
+      const centerY = (e.clientY || rect.height / 2) - rect.top
+      
+      // 计算新的缩放比例
+      const newScale = Math.min(Math.max(canvasTransform.scale * e.scale, 0.1), 3)
+      
+      // 计算缩放后的偏移量
+      const scaleDiff = newScale - canvasTransform.scale
+      const offsetX = -(centerX * scaleDiff)
+      const offsetY = -(centerY * scaleDiff)
+      
+      setCanvasTransform(prev => ({
+        x: prev.x + offsetX,
+        y: prev.y + offsetY,
+        scale: newScale
+      }))
+    }
+  }, [canvasTransform])
+
+  // 绑定Safari gesture事件
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    // 阻止默认的手势事件
+    const preventGesture = (e: any) => {
+      e.preventDefault()
+    }
+
+    canvas.addEventListener('gesturestart', preventGesture, { passive: false })
+    canvas.addEventListener('gesturechange', handleSafariGesture, { passive: false })
+    canvas.addEventListener('gestureend', preventGesture, { passive: false })
+
+    return () => {
+      canvas.removeEventListener('gesturestart', preventGesture)
+      canvas.removeEventListener('gesturechange', handleSafariGesture)
+      canvas.removeEventListener('gestureend', preventGesture)
+    }
+  }, [handleSafariGesture])
+
+  // 防止全局的双指缩放
+  useEffect(() => {
+    const preventZoom = (e: WheelEvent) => {
+      // 只在画布区域内阻止默认缩放
+      const target = e.target as HTMLElement
+      const isInCanvas = canvasRef.current?.contains(target)
+      
+      if (isInCanvas && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault()
+      }
+    }
+
+    // 在捕获阶段监听，确保能阻止默认行为
+    document.addEventListener('wheel', preventZoom, { passive: false, capture: true })
+
+    return () => {
+      document.removeEventListener('wheel', preventZoom, { capture: true })
+    }
+  }, [])
   
   // 缩放控制函数
+  const handleZoom = useCallback((factor: number) => {
+    setCanvasTransform(prev => ({
+      ...prev,
+      scale: Math.min(Math.max(prev.scale * factor, 0.1), 3)
+    }))
+  }, [])
+
   const handleZoomIn = useCallback(() => {
     setCanvasTransform(prev => ({
       ...prev,
@@ -1023,60 +1587,33 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
     })
   }, [cards, questionNodes, questionPositions, outputNodes])
 
-  // 键盘快捷键
+  // 空格键状态处理（键盘Hook中的isSpacePressed需要与这里的平移状态同步）
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Delete键删除选中的卡片
-      if (e.key === 'Delete' && selectedCardIds.length > 0) {
-        selectedCardIds.forEach(id => removeCard(id))
-      }
-      
-      // Ctrl/Cmd + A 全选
-      if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
-        e.preventDefault()
-        cards.forEach(card => selectCard(card.id, false))
-      }
-      
-      // Escape 取消选择
-      if (e.key === 'Escape') {
-        clearSelection()
-      }
-      
-      // 空格键激活平移模式
-      if (e.key === ' ' && !e.repeat) {
-        e.preventDefault()
-        setIsSpacePressed(true)
-      }
-      
-      // 快捷键缩放
-      if ((e.ctrlKey || e.metaKey) && e.key === '=') {
-        e.preventDefault()
-        handleZoomIn()
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key === '-') {
-        e.preventDefault()
-        handleZoomOut()
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key === '0') {
-        e.preventDefault()
-        handleZoomReset()
-      }
-    }
-    
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.key === ' ') {
-        setIsSpacePressed(false)
         setIsPanning(false)
       }
     }
     
-    window.addEventListener('keydown', handleKeyDown)
     window.addEventListener('keyup', handleKeyUp)
     return () => {
-      window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
     }
-  }, [selectedCardIds, cards, removeCard, selectCard, clearSelection])
+  }, [])
+
+  // 使用键盘快捷键Hook
+  const { isSpacePressed } = useCanvasKeyboardShortcuts({
+    selectedCardIds,
+    cards,
+    onRemoveCard: removeCard,
+    onSelectCard: selectCard,
+    onClearSelection: clearSelection,
+    onZoomIn: () => handleZoom(1.2),
+    onZoomOut: () => handleZoom(0.8),
+    onZoomReset: handleZoomReset,
+    onFitToScreen: handleFitToScreen,
+    onToggleAIInput: aiInputVisible ? hideAIInput : showAIInput
+  })
 
   // 从侧边栏选择笔记时自动添加到画布
   useEffect(() => {
@@ -1100,7 +1637,7 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
     <div className="canvas-area-container">
       <div
         ref={canvasRef}
-        className={`canvas-area ${isDraggingOver ? 'dragging-over' : ''} ${isPanning ? 'panning' : ''} ${isSpacePressed ? 'space-pressed' : ''}`}
+        className={`canvas-area ${isDraggingOver ? 'dragging-over' : ''} ${isPanning ? 'panning' : ''} ${isSpacePressed ? 'space-pressed' : ''} ${isTrackpadGesture ? 'trackpad-gesture' : ''}`}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
@@ -1110,7 +1647,20 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
         onMouseMove={handleCanvasMouseMove}
         onMouseUp={handleCanvasMouseUp}
         onMouseLeave={handleCanvasMouseUp}
+        onTouchStart={handleGestureStart}
+        onTouchMove={handleGestureChange}
+        onTouchEnd={handleGestureEnd}
+        onTouchCancel={handleGestureEnd}
       >
+        {/* 画布网格背景 */}
+        <div 
+          className="canvas-grid"
+          style={{
+            transform: `translate(${canvasTransform.x}px, ${canvasTransform.y}px) scale(${canvasTransform.scale})`,
+            transformOrigin: '0 0'
+          }}
+        />
+        
         {/* 画布内容容器 */}
         <div 
           className="canvas-content"
@@ -1119,15 +1669,7 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
             transformOrigin: '0 0'
           }}
         >
-        {/* AI输入框 */}
-        {aiInputVisible && (
-          <CanvasAIInput
-            onQuestionSubmit={handleOutputNodeQuestionSubmit}
-            isLoading={isProcessingQuestion}
-            knowledgeBase={knowledgeBase}
-            onClose={() => hideAIInput()}
-          />
-        )}
+        {/* AI输入框功能已集成到 CanvasEmptyState 中 */}
 
         {/* 连接线层 */}
         <ConnectionLayer
@@ -1135,11 +1677,11 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
           outputConnections={outputConnections}
           cards={cards}
           outputNodes={Object.values(outputNodes)}
-          onConnectionClick={(connectionId) => {
-          }}
-          onConnectionHover={(connectionId) => {
-            // 处理连接线悬停
-          }}
+          onConnectionClick={handleConnectionClick}
+          onConnectionHover={handleConnectionHover}
+          onConnectionDoubleClick={handleConnectionDoubleClick}
+          onConnectionRightClick={handleConnectionRightClick}
+          selectedConnectionId={selectedConnectionId}
         />
 
         {/* 问题节点 */}
@@ -1169,51 +1711,28 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
           )
         })}
 
-        {/* 空状态提示 */}
-        {cards.length === 0 && questionNodes.length === 0 && !isDraggingOver && !aiInputVisible && !isProcessingQuestion && (
-          <div className="empty-state">
-            <div className="empty-icon">
-              <i className="fas fa-brain"></i>
-            </div>
-            <h3>智能画布</h3>
-            <p>问一个问题，让AI为你召回相关知识卡片</p>
-            <button 
-              onClick={showAIInput}
-              className="start-thinking-btn"
-            >
-              <i className="fas fa-plus"></i>
-              开始思考
-            </button>
-            <div className="tips">
-              <div className="tip">
-                <i className="fas fa-comments"></i>
-                <span>AI问答助手</span>
-              </div>
-              <div className="tip">
-                <i className="fas fa-project-diagram"></i>
-                <span>智能关系映射</span>
-              </div>
-              <div className="tip">
-                <i className="fas fa-magic"></i>
-                <span>自动布局优化</span>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* 空状态提示已移到外部统一处理 */}
 
         {/* 画布卡片 */}
-        {cards.map(card => (
-          <CanvasCard
-            key={card.id}
-            card={card}
-            isSelected={selectedCardIds.includes(card.id)}
-            knowledgeBaseMap={knowledgeBaseMap}
-            onSelect={(isMulti) => handleCardSelect(card.id, isMulti)}
-            onPositionChange={(position) => handleCardPositionChange(card.id, position)}
-            onSizeChange={(size) => handleCardSizeChange(card.id, size)}
-            onRemove={() => handleCardRemove(card.id)}
-          />
-        ))}
+        {cards.map(card => {
+          const connectionStatus = getConnectionPointsStatus(card.id)
+          return (
+            <CanvasCard
+              key={card.id}
+              card={card}
+              isSelected={selectedCardIds.includes(card.id)}
+              knowledgeBaseMap={knowledgeBaseMap}
+              onSelect={(isMulti) => handleCardSelect(card.id, isMulti)}
+              onPositionChange={(position) => handleCardPositionChange(card.id, position)}
+              onSizeChange={(size) => handleCardSizeChange(card.id, size)}
+              onRemove={() => handleCardRemove(card.id)}
+              hasConnections={connectionStatus.hasConnections}
+              onConnectionStart={handleConnectionStart}
+              onConnectionPointClick={handleConnectionPointClick}
+              showConnectionPoints={connectionDrag.isActive}
+            />
+          )
+        })}
 
         {/* 输出节点渲染 */}
         {Object.values(outputNodes).map(node => {
@@ -1227,87 +1746,119 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
                 onPositionChange={(position) => updateOutputNode(node.id, { position })}
                 onRemove={() => removeOutputNode(node.id)}
                 onQuestionSubmit={(question) => handleOutputNodeFollowUp(node.id, question)}
-                onContextCardClick={(cardId) => {
-                  // 点击上下文卡片时，高亮对应的画布卡片
-                  const card = cards.find(c => c.noteId === cardId)
-                  if (card) {
-                    selectCard(card.id, false)
-                  }
-                }}
               />
             )
           }
+          
+          if (node.type === 'svg-card') {
+            const svgNode = node as SVGCardNode
+            return (
+              <SVGCardOutputNode
+                key={node.id}
+                node={svgNode}
+                isActive={activeOutputNodeId === node.id}
+                onPositionChange={(position) => updateOutputNode(node.id, { position })}
+                onRemove={() => removeOutputNode(node.id)}
+                onCardDrop={(cardIds) => handleSVGCardGeneration(node.id, cardIds)}
+                onTemplateChange={(template) => handleSVGTemplateChange(node.id, template)}
+                onRegenerate={() => handleSVGRegenerate(node.id)}
+              />
+            )
+          }
+          
           return null
         })}
 
         {/* 放置指示器 */}
-        {isDraggingOver && dropIndicatorPos && (
-          <div
-            className="drop-indicator"
-            style={{
-              left: dropIndicatorPos.x - 140,
-              top: dropIndicatorPos.y - 100
-            }}
-          />
-        )}
         </div>{/* 结束 canvas-content */}
       </div>
 
-      {/* 画布工具栏 */}
-      <div className="canvas-toolbar">
-        <div className="toolbar-section">
-          <button 
-            className={`toolbar-btn ${aiInputVisible ? 'active' : ''}`}
-            title="AI提问"
-            onClick={aiInputVisible ? hideAIInput : showAIInput}
-          >
-            <i className="fas fa-robot"></i>
-          </button>
-          <button 
-            className="toolbar-btn" 
-            title="适应画布 (F)"
-            onClick={handleFitToScreen}
-          >
-            <i className="fas fa-compress"></i>
-          </button>
-          <button 
-            className="toolbar-btn" 
-            title="重置缩放 (Ctrl+0)"
-            onClick={handleZoomReset}
-          >
-            <i className="fas fa-undo"></i>
-          </button>
-          <button 
-            className="toolbar-btn" 
-            title="放大 (Ctrl++)" 
-            onClick={handleZoomIn}
-            disabled={canvasTransform.scale >= 3}
-          >
-            <i className="fas fa-search-plus"></i>
-          </button>
-          <button 
-            className="toolbar-btn" 
-            title="缩小 (Ctrl+-)" 
-            onClick={handleZoomOut}
-            disabled={canvasTransform.scale <= 0.1}
-          >
-            <i className="fas fa-search-minus"></i>
-          </button>
-          <span className="zoom-indicator">
-            {Math.round(canvasTransform.scale * 100)}%
-          </span>
-        </div>
-        <div className="toolbar-section">
-          <span className="node-count">
-            {questionNodes.length} 问题 | {cards.length} 笔记
-          </span>
-          {connections.length > 0 && (
-            <span className="connection-count">
-              {connections.length} 连接
-            </span>
-          )}
-        </div>
-      </div>
+      {/* 新的组件 */}
+      <DropIndicator 
+        position={dropIndicatorPos}
+        isVisible={isDraggingOver}
+      />
+      
+      {/* 连接预览 */}
+      {connectionDrag.isActive && connectionDrag.previewLine && (
+        <ConnectionPreview
+          startPoint={connectionDrag.previewLine.start}
+          endPoint={connectionDrag.previewLine.end}
+          isVisible={true}
+        />
+      )}
+      
+      {/* 连接右键菜单 */}
+      {contextMenuState && (
+        <ConnectionContextMenu
+          isVisible={contextMenuState.isVisible}
+          position={contextMenuState.position}
+          connectionId={contextMenuState.connectionId}
+          currentStatus={contextMenuState.status}
+          onStatusChange={handleConnectionStatusChange}
+          onDelete={handleConnectionDelete}
+          onClose={handleCloseContextMenu}
+        />
+      )}
+      
+      {/* 连接悬停信息卡片 */}
+      {hoveredConnectionId && hoverCardPosition && (
+        (() => {
+          const connections = getNodeConnections()
+          const connection = connections.find(conn => conn.id === hoveredConnectionId)
+          
+          if (!connection) return null
+          
+          return (
+            <ConnectionHoverCard
+              connection={connection}
+              position={hoverCardPosition}
+              onClose={() => setHoveredConnectionId(null)}
+              onDisconnect={() => {
+                deleteConnection(hoveredConnectionId)
+                setHoveredConnectionId(null)
+              }}
+              onStatusChange={(status) => {
+                updateOutputConnection(hoveredConnectionId, status)
+              }}
+            />
+          )
+        })()
+      )}
+      
+      {/* 连接快捷键帮助 */}
+      <ConnectionShortcutsHelp
+        selectedConnectionId={selectedConnectionId}
+      />
+
+      <CanvasToolbar
+        transform={canvasTransform}
+        nodeCount={questionNodes.length}
+        cardCount={cards.length}
+        connectionCount={connections.length}
+        svgNodeCount={svgNodes.length}
+        isAIInputVisible={aiInputVisible}
+        onZoomIn={handleZoomIn}
+        onZoomOut={handleZoomOut}
+        onZoomReset={handleZoomReset}
+        onFitToScreen={handleFitToScreen}
+        onToggleAIInput={aiInputVisible ? hideAIInput : showAIInput}
+        onBatchExport={handleBatchExport}
+      />
+
+      <CanvasEmptyState
+        isVisible={cards.length === 0 && questionNodes.length === 0 && Object.keys(outputNodes).length === 0 && !isProcessingQuestion}
+        onStartThinking={showAIInput}
+        onQuestionSubmit={handleOutputNodeQuestionSubmit}
+        isProcessing={isProcessingQuestion}
+      />
+
+      {/* 批量导出对话框 */}
+      <SVGBatchExportDialog
+        isOpen={batchExportDialogOpen}
+        svgNodes={svgNodes}
+        onClose={() => setBatchExportDialogOpen(false)}
+      />
 
       <style jsx>{`
         .canvas-area-container {
@@ -1325,6 +1876,14 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
           overflow: hidden;
           cursor: default;
           transition: background-color 0.2s;
+          /* 防止浏览器默认缩放 */
+          touch-action: none;
+          -webkit-touch-callout: none;
+          -webkit-user-select: none;
+          -khtml-user-select: none;
+          -moz-user-select: none;
+          -ms-user-select: none;
+          user-select: none;
         }
 
         .canvas-area.dragging-over {
@@ -1338,15 +1897,50 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
         .canvas-area.space-pressed {
           cursor: grab;
         }
+        
+        .canvas-area.space-pressed:active {
+          cursor: grabbing;
+        }
+
+        .canvas-area.trackpad-gesture {
+          cursor: move;
+          user-select: none;
+          -webkit-user-select: none;
+          -moz-user-select: none;
+          -ms-user-select: none;
+          touch-action: none;
+        }
+
+        .canvas-grid {
+          position: absolute;
+          top: -5000px;
+          left: -5000px;
+          width: 10000px;
+          height: 10000px;
+          background-image: 
+            linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+            linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+          background-size: 20px 20px;
+          pointer-events: none;
+          opacity: 0.6;
+          transition: opacity 0.2s ease;
+        }
+
+        .canvas-area.panning .canvas-grid {
+          opacity: 0.8;
+        }
 
         .canvas-content {
-          width: 100%;
-          height: 100%;
+          width: 10000px;
+          height: 10000px;
           position: relative;
           transition: transform 0.1s ease-out;
           will-change: transform;
           transform-origin: 0 0;
+          min-width: 100%;
+          min-height: 100%;
         }
+
 
         /* 空状态 */
         .empty-state {
@@ -1402,75 +1996,7 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
           font-size: 14px;
         }
 
-        /* 放置指示器 */
-        .drop-indicator {
-          position: absolute;
-          width: 280px;
-          height: 200px;
-          border: 2px dashed #3b82f6;
-          border-radius: 12px;
-          background: rgba(59, 130, 246, 0.05);
-          pointer-events: none;
-          animation: pulse 1s infinite;
-        }
 
-        @keyframes pulse {
-          0%, 100% { opacity: 0.5; }
-          50% { opacity: 1; }
-        }
-
-        /* 工具栏 */
-        .canvas-toolbar {
-          position: absolute;
-          bottom: 20px;
-          right: 20px;
-          background: white;
-          border-radius: 12px;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-          display: flex;
-          align-items: center;
-          gap: 16px;
-          padding: 8px 16px;
-          z-index: 10;
-        }
-
-        .toolbar-section {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-
-        .toolbar-btn {
-          width: 32px;
-          height: 32px;
-          border: none;
-          background: transparent;
-          color: #6b7280;
-          border-radius: 6px;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          transition: all 0.2s;
-        }
-
-        .toolbar-btn:hover:not(:disabled) {
-          background: #f3f4f6;
-          color: #374151;
-        }
-
-        .toolbar-btn:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-
-        .zoom-indicator {
-          font-size: 12px;
-          color: #6b7280;
-          font-weight: 500;
-          padding: 0 8px;
-          border-left: 1px solid rgba(156, 163, 175, 0.3);
-        }
 
         .start-thinking-btn {
           margin-top: 16px;
@@ -1494,24 +2020,6 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
           box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
         }
 
-        .toolbar-btn.active {
-          background: #667eea;
-          color: white;
-          box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
-        }
-
-        .node-count,
-        .connection-count {
-          font-size: 12px;
-          color: #9ca3af;
-          white-space: nowrap;
-        }
-
-        .connection-count {
-          margin-left: 8px;
-          padding-left: 8px;
-          border-left: 1px solid rgba(156, 163, 175, 0.3);
-        }
 
         /* 滚动条样式 */
         .canvas-area::-webkit-scrollbar {
@@ -1534,18 +2042,6 @@ export function CanvasArea({ selectedNote, knowledgeBase = [] }: CanvasAreaProps
 
         /* 响应式 */
         @media (max-width: 768px) {
-          .canvas-toolbar {
-            bottom: 10px;
-            right: 10px;
-            padding: 6px 12px;
-          }
-
-          .toolbar-btn {
-            width: 28px;
-            height: 28px;
-            font-size: 14px;
-          }
-
           .tips {
             flex-direction: column;
             gap: 12px;

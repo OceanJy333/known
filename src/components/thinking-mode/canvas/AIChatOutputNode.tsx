@@ -14,7 +14,6 @@ export interface AIChatOutputNodeProps {
   onPositionChange?: (position: Position) => void
   onRemove?: () => void
   onQuestionSubmit?: (question: string) => void
-  onContextCardClick?: (cardId: string) => void
 }
 
 export function AIChatOutputNode({
@@ -26,7 +25,9 @@ export function AIChatOutputNode({
 }: AIChatOutputNodeProps) {
   const [isExpanded, setIsExpanded] = useState<boolean>(node.isExpanded ?? true)
   const [inputValue, setInputValue] = useState('')
+  const [showCompletionNotice, setShowCompletionNotice] = useState(false)
   const messagesRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   // 自动滚动到底部
   useEffect(() => {
@@ -37,7 +38,42 @@ export function AIChatOutputNode({
         }
       })
     }
-  }, [node.conversationHistory, node.currentQuestion, node.currentAnswer, node.status])
+  }, [node.conversationHistory, node.status])
+
+  // 监听状态变化，显示完成提示
+  useEffect(() => {
+    if (node.status === 'completed') {
+      // 检查是否真的有回答内容
+      const lastAssistantMessage = node.conversationHistory
+        .filter(msg => msg.role === 'assistant')
+        .pop()
+      
+      if (!lastAssistantMessage || lastAssistantMessage.content.length === 0) {
+        console.warn('⚠️ [AIChatOutputNode] 状态为completed但没有助手回答内容:', {
+          nodeId: node.id,
+          conversationLength: node.conversationHistory.length,
+          lastMessage: lastAssistantMessage
+        })
+        return
+      }
+      
+      setShowCompletionNotice(true)
+      
+      // 3秒后自动隐藏完成提示
+      const timer = setTimeout(() => {
+        setShowCompletionNotice(false)
+      }, 3000)
+      
+      // 聚焦输入框，提示用户可以继续提问
+      if (inputRef.current && isExpanded) {
+        setTimeout(() => {
+          inputRef.current?.focus()
+        }, 500)
+      }
+      
+      return () => clearTimeout(timer)
+    }
+  }, [node.status, isExpanded, node.conversationHistory.length])
 
   // 处理输入提交
   const handleSubmit = useCallback((e: React.FormEvent) => {
@@ -61,12 +97,14 @@ export function AIChatOutputNode({
     const isUser = message.role === 'user'
 
     return (
-      <div key={message.id} className={`message ${isUser ? 'user-message' : 'assistant-message'}`}>
-        <div className="message-content">
-          {isUser ? (
-            <div className="user-text">{message.content}</div>
-          ) : (
-            <div className="assistant-text">
+      <div key={message.id} className={`animate-fadeInUp ${isUser ? 'flex justify-end' : ''}`}>
+        {isUser ? (
+          <div className="max-w-[85%] chat-bubble chat-bubble-user">
+            <p className="text-sm whitespace-pre-wrap leading-relaxed">{message.content}</p>
+          </div>
+        ) : (
+          <div className="w-full chat-assistant-content">
+            <div className="prose prose-sm max-w-none dark:prose-invert chat-markdown">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 rehypePlugins={[rehypeHighlight]}
@@ -74,8 +112,8 @@ export function AIChatOutputNode({
                 {message.content}
               </ReactMarkdown>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     )
   }
@@ -96,23 +134,12 @@ export function AIChatOutputNode({
               ref={messagesRef}
               className="chat-messages"
             >
-              {/* 显示对话历史 */}
+              {/* 显示所有对话历史 */}
               {node.conversationHistory.map(renderMessage)}
 
-              {/* 如果有当前问题但还没有在历史中，显示当前问题 */}
-              {node.currentQuestion && !node.conversationHistory.some(msg =>
-                msg.role === 'user' && msg.content === node.currentQuestion
-              ) && (
-                <div className="message user-message">
-                  <div className="message-content">
-                    <div className="user-text">{node.currentQuestion}</div>
-                  </div>
-                </div>
-              )}
-
-              {/* 如果正在生成回答，显示加载状态 */}
+              {/* 加载状态 */}
               {(node.status === 'recalling' || node.status === 'generating') && (
-                <div className="loading-indicator">
+                <div className="chat-loading-indicator">
                   <div className="loading-dots">
                     <span></span>
                     <span></span>
@@ -123,21 +150,13 @@ export function AIChatOutputNode({
                   </span>
                 </div>
               )}
-
-              {/* 如果有当前回答但还没有在历史中，显示当前回答 */}
-              {node.currentAnswer && !node.conversationHistory.some(msg =>
-                msg.role === 'assistant' && msg.content === node.currentAnswer
-              ) && (
-                <div className="message assistant-message">
-                  <div className="message-content">
-                    <div className="assistant-text">
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        rehypePlugins={[rehypeHighlight]}
-                      >
-                        {node.currentAnswer}
-                      </ReactMarkdown>
-                    </div>
+              
+              {/* 完成状态提示 */}
+              {showCompletionNotice && node.conversationHistory.length > 0 && (
+                <div className="completion-notice">
+                  <div className="completion-content">
+                    <i className="fas fa-check-circle completion-icon"></i>
+                    <span className="completion-text">回答已完成</span>
                   </div>
                 </div>
               )}
@@ -146,13 +165,14 @@ export function AIChatOutputNode({
             {/* 输入框 */}
             <div className="chat-input-container">
               <form onSubmit={handleSubmit} className="chat-input-form">
-                <div className="input-wrapper">
+                <div className={`input-wrapper ${node.status === 'completed' ? 'ready-for-input' : ''}`}>
                   <input
+                    ref={inputRef}
                     type="text"
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    placeholder="继续提问..."
+                    placeholder={node.status === 'completed' ? "有其他问题吗？继续提问..." : "继续提问..."}
                     className="chat-input"
                     disabled={node.status === 'recalling' || node.status === 'generating'}
                   />
@@ -171,7 +191,13 @@ export function AIChatOutputNode({
           // 收起状态
           <div className="collapsed-content">
             <div className="collapsed-question">
-              {node.currentQuestion || '点击展开查看详情'}
+              {(() => {
+                // 从对话历史中找到最后一个用户问题
+                const userMessages = node.conversationHistory.filter(msg => msg.role === 'user')
+                return userMessages.length > 0 
+                  ? userMessages[userMessages.length - 1].content 
+                  : '点击展开查看详情'
+              })()}
             </div>
           </div>
         )}
@@ -231,80 +257,68 @@ export function AIChatOutputNode({
           background: linear-gradient(135deg, #94a3b8 0%, #64748b 100%);
         }
 
-        /* 消息样式 */
-        .message {
-          margin-bottom: 16px;
+        /* 消息容器动画 */
+        .animate-fadeInUp {
+          animation: fadeInUp 0.3s ease-out;
+        }
+
+        @keyframes fadeInUp {
+          from {
+            opacity: 0;
+            transform: translateY(10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        /* 完成状态样式 */
+        .completion-notice {
           display: flex;
-          flex-direction: column;
+          justify-content: center;
+          align-items: center;
+          padding: 16px;
+          margin: 12px 0;
+          background: rgba(16, 185, 129, 0.1);
+          border: 1px solid rgba(16, 185, 129, 0.2);
+          border-radius: 12px;
+          backdrop-filter: blur(10px);
+          animation: fadeInOut 3s ease-in-out;
+        }
+        
+        @keyframes fadeInOut {
+          0% { opacity: 0; transform: translateY(-10px); }
+          10% { opacity: 1; transform: translateY(0); }
+          90% { opacity: 1; transform: translateY(0); }
+          100% { opacity: 0; transform: translateY(-10px); }
         }
 
-        .user-message {
-          align-items: flex-end;
-        }
-
-        .assistant-message {
-          align-items: flex-start;
-        }
-
-        .message-content {
-          max-width: 85%;
-          padding: 12px 16px;
-          border-radius: 20px;
-          word-wrap: break-word;
-          overflow-wrap: break-word;
-          backdrop-filter: blur(20px);
-          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        .user-message .message-content {
-          background: linear-gradient(135deg,
-            rgba(59, 130, 246, 0.9) 0%,
-            rgba(99, 102, 241, 0.9) 100%);
-          color: white;
-          border: 1px solid rgba(255, 255, 255, 0.2);
-          box-shadow:
-            0 4px 16px rgba(59, 130, 246, 0.2),
-            inset 0 1px 0 rgba(255, 255, 255, 0.2);
-        }
-
-        .user-message .message-content:hover {
-          transform: translateY(-1px);
-          box-shadow:
-            0 6px 20px rgba(59, 130, 246, 0.3),
-            inset 0 1px 0 rgba(255, 255, 255, 0.25);
-        }
-
-        .assistant-message .message-content {
-          background: rgba(255, 255, 255, 0.8);
-          backdrop-filter: blur(20px);
-          color: #374151;
-          box-shadow:
-            0 2px 8px rgba(0, 0, 0, 0.06),
-            inset 0 1px 0 rgba(255, 255, 255, 0.5);
-          border: 1px solid rgba(226, 232, 240, 0.8);
-        }
-
-        .assistant-message .message-content:hover {
-          background: rgba(255, 255, 255, 0.95);
-          box-shadow:
-            0 4px 12px rgba(0, 0, 0, 0.08),
-            inset 0 1px 0 rgba(255, 255, 255, 0.6);
-          transform: translateY(-1px);
-        }
-
-        /* 加载状态 */
-        .loading-indicator {
+        .completion-content {
           display: flex;
           align-items: center;
           gap: 8px;
-          padding: 12px 16px;
-          background: rgba(239, 246, 255, 0.8);
-          backdrop-filter: blur(8px);
-          border-radius: 16px;
-          margin: 8px 0;
-          box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
-          border: 1px solid rgba(147, 197, 253, 0.3);
-          max-width: 85%;
+        }
+
+        .completion-icon {
+          color: #10b981;
+          font-size: 16px;
+        }
+
+        .completion-text {
+          color: #047857;
+          font-size: 14px;
+          font-weight: 500;
+        }
+
+
+        /* 加载指示器 - 复用全局样式 */
+        .chat-loading-indicator {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 16px 0;
+          opacity: 0.7;
         }
 
         .loading-dots {
@@ -371,6 +385,22 @@ export function AIChatOutputNode({
             0 8px 32px rgba(59, 130, 246, 0.15),
             inset 0 1px 0 rgba(255, 255, 255, 0.9);
           transform: translateY(-1px);
+        }
+        
+        /* 准备输入状态动画 */
+        .input-wrapper.ready-for-input {
+          animation: pulseGreen 2s ease-in-out;
+        }
+        
+        @keyframes pulseGreen {
+          0%, 100% { 
+            border-color: rgba(226, 232, 240, 0.6);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+          }
+          50% { 
+            border-color: rgba(16, 185, 129, 0.4);
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1), 0 4px 20px rgba(16, 185, 129, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+          }
         }
 
         .chat-input {
@@ -451,29 +481,13 @@ export function AIChatOutputNode({
           .ai-chat-content {
             background: #0f172a;
             border-color: #334155;
-            box-shadow:
-              0 10px 25px rgba(0, 0, 0, 0.4),
-              0 4px 10px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4), 0 4px 10px rgba(0, 0, 0, 0.2);
           }
-
+          
           .ai-chat-content:hover {
-            box-shadow:
-              0 15px 35px rgba(0, 0, 0, 0.6),
-              0 6px 15px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.6), 0 6px 15px rgba(0, 0, 0, 0.3);
           }
 
-          .assistant-message .message-content {
-            background: rgba(30, 41, 59, 0.8);
-            color: #e2e8f0;
-            border-color: rgba(71, 85, 105, 0.8);
-          }
-
-          .user-message .message-content {
-            background: linear-gradient(135deg,
-              rgba(59, 130, 246, 0.9) 0%,
-              rgba(99, 102, 241, 0.9) 100%);
-            border-color: rgba(255, 255, 255, 0.2);
-          }
 
           .chat-input-container {
             background: rgba(30, 41, 59, 0.95);
@@ -498,14 +512,6 @@ export function AIChatOutputNode({
             color: #64748b;
           }
 
-          .loading-indicator {
-            background: rgba(30, 58, 138, 0.4);
-            border-color: rgba(59, 130, 246, 0.5);
-          }
-
-          .loading-text {
-            color: #93bbfc;
-          }
 
           .collapsed-content {
             background: rgba(30, 41, 59, 0.3);

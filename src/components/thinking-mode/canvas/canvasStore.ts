@@ -33,7 +33,7 @@ interface ExtendedCanvasState extends CanvasState {
 
 interface CanvasStore extends ExtendedCanvasState {
   // 卡片操作方法
-  addCard: (params: { noteId: string; position: Position }) => void
+  addCard: (params: { noteId: string; position: Position }) => string
   addCards: (cards: { noteId: string; position: Position }[]) => void
   updateCard: (id: string, updates: Partial<CanvasCard>) => void
   removeCard: (id: string) => void
@@ -71,6 +71,7 @@ interface CanvasStore extends ExtendedCanvasState {
   removeOutputConnection: (connectionId: string) => void
   toggleCardConnection: (nodeId: string, cardId: string) => void
   getNodeContextCards: (nodeId: string) => string[]
+  getNodeConnections: () => OutputNodeConnection[]
   
   // 布局和工具方法
   canDropAt: (position: Position) => boolean
@@ -123,6 +124,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       selectedCardIds: [id] // 自动选中新添加的卡片
     })
     
+    return id // 返回新创建的卡片ID
   },
 
   // 批量添加卡片 - 性能优化版本
@@ -443,13 +445,20 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       updatedAt: new Date()
     }
 
-    // 如果是AI聊天节点，添加初始问题
-    if (params.type === 'ai-chat' && params.initialQuestion) {
+    // 如果是AI聊天节点，初始化特定字段
+    if (params.type === 'ai-chat') {
       const chatNode = newNode as AIChatNode
-      chatNode.currentQuestion = params.initialQuestion
       chatNode.recalledCards = []
       chatNode.contextCards = []
       chatNode.isExpanded = true
+    }
+
+    // 如果是SVG卡片节点，初始化特定字段
+    if (params.type === 'svg-card') {
+      const svgNode = newNode as any // 临时使用any，避免类型引入问题
+      svgNode.svgContent = ''
+      svgNode.template = 'modern'
+      svgNode.sourceCardIds = []
     }
 
 
@@ -465,13 +474,26 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   updateOutputNode: (nodeId, updates) => {
     const state = get()
     const node = state.outputNodes[nodeId]
-    if (!node) return
+    if (!node) {
+      console.warn('⚠️ [canvasStore] updateOutputNode: 找不到节点', { nodeId, updates })
+      return
+    }
 
+    // 如果状态从generating直接跳到completed，说明可能有问题
+    if (node.status === 'generating' && updates.status === 'completed') {
+      console.log('⚠️ [canvasStore] 检测到状态从generating直接跳到completed:', {
+        nodeId,
+        conversationLength: node.conversationHistory?.length || 0,
+        hasContent: node.conversationHistory?.some(msg => msg.role === 'assistant' && msg.content.length > 0)
+      })
+    }
 
+    const updatedNode = { ...node, ...updates, updatedAt: new Date() }
+    
     set({
       outputNodes: {
         ...state.outputNodes,
-        [nodeId]: { ...node, ...updates, updatedAt: new Date() }
+        [nodeId]: updatedNode
       }
     })
   },
@@ -599,6 +621,11 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         conn.status === ConnectionStatus.ACTIVE
       )
       .map(conn => conn.toId)
+  },
+  
+  getNodeConnections: () => {
+    const state = get()
+    return state.outputConnections
   },
 
   // 清空画布

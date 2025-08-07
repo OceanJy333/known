@@ -9,7 +9,6 @@ import { NoteItem } from './NoteItem'
 interface GroupedNotes {
   [groupId: string]: {
     label: string
-    icon: string
     notes: KnowledgeNote[]
     count: number
   }
@@ -51,7 +50,6 @@ export function NotesTree({
             if (!groups[groupId]) {
               groups[groupId] = {
                 label: '未分类',
-                icon: '📂',
                 notes: [],
                 count: 0
               }
@@ -66,7 +64,6 @@ export function NotesTree({
                 if (!groups[groupId]) {
                   groups[groupId] = {
                     label: tag.name,
-                    icon: '🏷️',
                     notes: [],
                     count: 0
                   }
@@ -88,7 +85,6 @@ export function NotesTree({
           if (!groups[groupId]) {
             groups[groupId] = {
               label: category?.name || '未分类',
-              icon: category?.icon || '📂',
               notes: [],
               count: 0
             }
@@ -128,7 +124,6 @@ export function NotesTree({
           if (!groups[groupId]) {
             groups[groupId] = {
               label,
-              icon: '📅',
               notes: [],
               count: 0
             }
@@ -161,7 +156,6 @@ export function NotesTree({
         {/* 总数显示 */}
         <div className="tree-header">
           <div className="total-count">
-            <i className="fas fa-folder-open header-icon"></i>
             <span>全部笔记 ({notes.length})</span>
           </div>
         </div>
@@ -179,8 +173,7 @@ export function NotesTree({
                   onClick={() => onToggleGroup(groupId)}
                 >
                   <div className="group-info">
-                    <i className={`fas ${isExpanded ? 'fa-chevron-down' : 'fa-chevron-right'} expand-icon`}></i>
-                    <span className="group-icon">{group.icon}</span>
+                    <span className="expand-icon">{isExpanded ? '−' : '+'}</span>
                     <span className="group-label">{group.label}</span>
                     <span className="group-count">({group.count})</span>
                   </div>
@@ -212,7 +205,6 @@ export function NotesTree({
       <div className="notes-tree-search">
         <div className="search-header">
           <div className="search-count">
-            <i className="fas fa-search header-icon"></i>
             <span>找到 {notes.length} 条相关笔记</span>
           </div>
         </div>
@@ -236,9 +228,6 @@ export function NotesTree({
   const renderEmptyState = () => {
     return (
       <div className="empty-state">
-        <div className="empty-icon">
-          <i className="fas fa-file-alt"></i>
-        </div>
         <div className="empty-title">
           {isSearching ? '没有找到相关笔记' : '还没有笔记'}
         </div>
@@ -282,16 +271,11 @@ export function NotesTree({
           font-weight: 600;
           color: #374151;
           padding: 8px 12px;
-          background: rgba(255, 255, 255, 0.6);
+          background: #f9fafb;
           border-radius: 8px;
-          border: 1px solid rgba(0, 0, 0, 0.04);
+          border: 1px solid #e5e7eb;
         }
 
-        .header-icon {
-          margin-right: 8px;
-          color: #6b7280;
-          font-size: 13px;
-        }
 
         .groups-list {
           space-y: 4px;
@@ -305,10 +289,11 @@ export function NotesTree({
           width: 100%;
           background: transparent;
           border: none;
-          padding: 8px 4px;
+          padding: 12px 8px;
           cursor: pointer;
-          border-radius: 6px;
-          transition: background-color 0.15s ease;
+          border-radius: 12px;
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+          position: relative;
         }
 
         .group-header:hover {
@@ -325,20 +310,20 @@ export function NotesTree({
           width: 16px;
           margin-right: 8px;
           color: #6b7280;
-          font-size: 10px;
-          transition: transform 0.15s ease;
+          font-size: 14px;
+          font-weight: 500;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
         }
 
-        .group-icon {
-          margin-right: 8px;
-          font-size: 14px;
-        }
 
         .group-label {
           flex: 1;
           font-size: 14px;
-          font-weight: 500;
-          color: #374151;
+          font-weight: 600;
+          color: #1f2937;
+          letter-spacing: 0.025em;
         }
 
         .group-count {
@@ -349,10 +334,11 @@ export function NotesTree({
 
         .group-content {
           margin-left: 24px;
-          margin-top: 4px;
-          padding-left: 8px;
-          border-left: 1px solid rgba(0, 0, 0, 0.06);
+          margin-top: 8px;
+          padding-left: 12px;
+          border-left: 2px solid rgba(59, 130, 246, 0.15);
         }
+
 
         .search-results {
           space-y: 2px;
@@ -368,21 +354,6 @@ export function NotesTree({
           padding: 32px 16px;
         }
 
-        .empty-icon {
-          width: 48px;
-          height: 48px;
-          background: rgba(107, 114, 128, 0.1);
-          border-radius: 24px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          margin-bottom: 16px;
-        }
-
-        .empty-icon i {
-          font-size: 20px;
-          color: #6b7280;
-        }
 
         .empty-title {
           font-size: 16px;
@@ -423,9 +394,6 @@ export function NotesTree({
             border-color: rgba(255, 255, 255, 0.06);
           }
 
-          .header-icon {
-            color: #9ca3af;
-          }
 
           .group-header:hover {
             background: rgba(255, 255, 255, 0.05);
@@ -447,13 +415,6 @@ export function NotesTree({
             border-left-color: rgba(255, 255, 255, 0.08);
           }
 
-          .empty-icon {
-            background: rgba(156, 163, 175, 0.1);
-          }
-
-          .empty-icon i {
-            color: #9ca3af;
-          }
 
           .empty-title {
             color: #e5e7eb;

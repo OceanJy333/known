@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
           }
           
           // 发送结束标志
-          const endData = `data: ${JSON.stringify({ done: true })}\n\n`
+          const endData = `data: ${JSON.stringify({ type: 'complete' })}\n\n`
           controller.enqueue(encoder.encode(endData))
           controller.close()
         } catch (error) {

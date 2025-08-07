@@ -13,12 +13,7 @@ interface NotesSidebarProps {
 
 export function NotesSidebar({ onNoteSelect, onNodeDragStart }: NotesSidebarProps) {
   // 处理节点拖拽开始
-  const handleNodeDragStart = (nodeType: NodeType, event: DragEvent) => {
-    
-    if (onNodeDragStart) {
-      onNodeDragStart(nodeType, event)
-    }
-  }
+  const handleNodeDragStart = onNodeDragStart || (() => {})
 
   return (
     <aside className="notes-sidebar">
@@ -76,10 +71,6 @@ export function NotesSidebar({ onNoteSelect, onNodeDragStart }: NotesSidebarProp
             z-index: 1000;
             transform: translateX(-100%);
             transition: transform 0.3s ease;
-          }
-
-          .notes-sidebar.mobile-open {
-            transform: translateX(0);
           }
 
           .sidebar-content {

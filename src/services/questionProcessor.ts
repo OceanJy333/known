@@ -148,7 +148,7 @@ ${context?.userPreferences ? `
 请提供详细的分析结果。`
 
     const response = await this.openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }

@@ -10,7 +10,6 @@ interface SearchCardProps {
 
 export function SearchCard({ value, onChange, onClear }: SearchCardProps) {
   const [isFocused, setIsFocused] = useState(false)
-  const [isExpanded, setIsExpanded] = useState(true)
   const inputRef = useRef<HTMLInputElement>(null)
 
   // 键盘快捷键支持
@@ -19,7 +18,6 @@ export function SearchCard({ value, onChange, onClear }: SearchCardProps) {
       if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
         e.preventDefault()
         inputRef.current?.focus()
-        setIsExpanded(true)
       }
     }
 
@@ -27,7 +25,7 @@ export function SearchCard({ value, onChange, onClear }: SearchCardProps) {
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [])
 
-  // 处理输入变化（带防抖）
+  // 处理输入变化
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     onChange(e.target.value)
   }
@@ -38,105 +36,47 @@ export function SearchCard({ value, onChange, onClear }: SearchCardProps) {
     inputRef.current?.focus()
   }
 
-  // 处理展开/折叠切换
-  const toggleExpanded = () => {
-    if (!isExpanded) {
-      setIsExpanded(true)
-      setTimeout(() => inputRef.current?.focus(), 150)
-    }
-  }
-
   return (
-    <div className={`search-card ${isExpanded ? 'expanded' : 'collapsed'} ${isFocused ? 'focused' : ''} ${value ? 'has-value' : ''}`}>
-      {isExpanded ? (
-        // 展开状态
-        <div className="search-expanded">
-          <div className="search-input-wrapper">
-            <div className="search-icon">
-              <i className="fas fa-search"></i>
-            </div>
-            <input
-              ref={inputRef}
-              type="text"
-              value={value}
-              onChange={handleInputChange}
-              onFocus={() => setIsFocused(true)}
-              onBlur={() => setIsFocused(false)}
-              placeholder="搜索笔记..."
-              className="search-input"
-            />
-            {value && (
-              <button
-                onClick={handleClear}
-                className="clear-button"
-                title="清空搜索"
-              >
-                <i className="fas fa-times"></i>
-              </button>
-            )}
-          </div>
-        </div>
-      ) : (
-        // 折叠状态
-        <div className="search-collapsed" onClick={toggleExpanded}>
-          <div className="collapsed-icon">
-            <i className="fas fa-search"></i>
-          </div>
-        </div>
-      )}
+    <div className={`search-card ${isFocused ? 'focused' : ''} ${value ? 'has-value' : ''}`}>
+      <div className="search-input-wrapper">
+        <input
+          ref={inputRef}
+          type="text"
+          value={value}
+          onChange={handleInputChange}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
+          placeholder="搜索笔记..."
+          className="search-input"
+        />
+        {value && (
+          <button
+            onClick={handleClear}
+            className="clear-button"
+            title="清空搜索"
+          >
+            <span>×</span>
+          </button>
+        )}
+      </div>
 
       <style jsx>{`
         .search-card {
-          background: rgba(255, 255, 255, 0.03);
-          backdrop-filter: blur(32px) saturate(150%);
-          -webkit-backdrop-filter: blur(32px) saturate(150%);
-          border: 0.5px solid rgba(255, 255, 255, 0.08);
-          border-radius: 20px;
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-          box-shadow: 
-            0 24px 64px rgba(0, 0, 0, 0.03),
-            0 12px 32px rgba(0, 0, 0, 0.02),
-            0 6px 16px rgba(0, 0, 0, 0.01),
-            inset 0 1px 0 rgba(255, 255, 255, 0.05);
+          background: #ffffff;
+          border: 1px solid #e5e7eb;
+          border-radius: 8px;
+          transition: border-color 0.2s ease;
         }
 
-        .search-card:hover {
-          transform: translateY(-2px);
-          box-shadow: 
-            0 32px 72px rgba(0, 0, 0, 0.04),
-            0 16px 40px rgba(0, 0, 0, 0.03),
-            0 8px 20px rgba(0, 0, 0, 0.02);
-        }
 
         .search-card.focused {
-          background: rgba(255, 255, 255, 0.05);
-          border-color: rgba(59, 130, 246, 0.5);
-          box-shadow: 
-            0 0 0 3px rgba(59, 130, 246, 0.1),
-            0 32px 72px rgba(0, 0, 0, 0.04),
-            0 16px 40px rgba(0, 0, 0, 0.03),
-            0 8px 20px rgba(0, 0, 0, 0.02);
+          border-color: #3b82f6;
+          box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
         }
 
-        .search-card.has-value {
-          background: rgba(255, 255, 255, 0.08);
-        }
 
-        .search-card.collapsed {
-          width: 56px;
-          height: 56px;
-          padding: 16px;
-          margin-left: 8px;
-          cursor: pointer;
-          border-radius: 28px;
-        }
-
-        .search-card.expanded {
-          padding: 7px 9px;
-        }
-
-        .search-expanded {
-          width: 100%;
+        .search-card {
+          padding: 8px 12px;
         }
 
         .search-input-wrapper {
@@ -145,21 +85,13 @@ export function SearchCard({ value, onChange, onClear }: SearchCardProps) {
           align-items: center;
         }
 
-        .search-icon {
-          position: absolute;
-          left: 8px;
-          color: rgba(107, 114, 128, 0.6);
-          z-index: 1;
-          pointer-events: none;
-          font-size: 11px;
-        }
 
         .search-input {
           width: 100%;
           background: transparent;
           border: none;
           outline: none;
-          padding: 4px 7px 4px 24px;
+          padding: 4px 7px;
           font-size: 13px;
           color: #1f2937;
           border-radius: 10px;
@@ -197,51 +129,17 @@ export function SearchCard({ value, onChange, onClear }: SearchCardProps) {
         }
 
 
-        .search-collapsed {
-          width: 100%;
-          height: 100%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
 
-        .collapsed-icon {
-          color: rgba(107, 114, 128, 0.8);
-          font-size: 18px;
-        }
-
-        /* 动画效果 */
-        @keyframes searchCardFadeIn {
-          from {
-            opacity: 0;
-            transform: translateY(-10px) scale(0.95);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-          }
-        }
-
-        .search-card {
-          animation: searchCardFadeIn 0.3s ease-out;
-        }
 
         /* 移动端适配 */
         @media (max-width: 768px) {
-          .search-card.collapsed {
-            width: 48px;
-            height: 48px;
-            padding: 12px;
-          }
-
-          .search-card.expanded {
+          .search-card {
             padding: 5px 7px;
           }
 
           .search-input {
             font-size: 16px; /* 防止iOS放大 */
           }
-
         }
 
         /* 暗色模式支持 */
@@ -268,10 +166,6 @@ export function SearchCard({ value, onChange, onClear }: SearchCardProps) {
           }
 
 
-          .search-icon,
-          .collapsed-icon {
-            color: rgba(156, 163, 175, 0.8);
-          }
 
           .clear-button {
             background: rgba(156, 163, 175, 0.1);

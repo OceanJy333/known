@@ -14,19 +14,19 @@ const categoryOptions: CategoryOption[] = [
   {
     id: 'tags',
     label: '按标签分类',
-    icon: '🏷️',
+    icon: '',
     description: '根据笔记标签组织'
   },
   {
     id: 'time',
     label: '按时间分类',
-    icon: '📅',
+    icon: '',
     description: '按创建时间分组'
   },
   {
     id: 'category',
     label: '按分类分类',
-    icon: '📁',
+    icon: '',
     description: '按预设分类组织'
   }
 ]
@@ -49,7 +49,6 @@ export function CategorySelector({ value, onChange }: CategorySelectorProps) {
   return (
     <div className="category-selector">
       <div className="selector-header">
-        <i className="fas fa-layer-group selector-header-icon"></i>
         <span className="selector-header-text">分类方式</span>
       </div>
 
@@ -59,10 +58,9 @@ export function CategorySelector({ value, onChange }: CategorySelectorProps) {
           onClick={() => setIsOpen(!isOpen)}
         >
           <div className="button-content">
-            <span className="button-icon">{currentOption?.icon}</span>
             <span className="button-text">{currentOption?.label}</span>
           </div>
-          <i className={`fas fa-chevron-down button-arrow ${isOpen ? 'rotated' : ''}`}></i>
+          <span className={`button-arrow ${isOpen ? 'rotated' : ''}`}>▼</span>
         </button>
 
         {isOpen && (
@@ -74,14 +72,13 @@ export function CategorySelector({ value, onChange }: CategorySelectorProps) {
                 onClick={() => handleSelect(option.id)}
               >
                 <div className="item-content">
-                  <span className="item-icon">{option.icon}</span>
                   <div className="item-text">
                     <div className="item-label">{option.label}</div>
                     <div className="item-description">{option.description}</div>
                   </div>
                 </div>
                 {option.id === value && (
-                  <i className="fas fa-check item-check"></i>
+                  <span className="item-check">✓</span>
                 )}
               </button>
             ))}
@@ -103,16 +100,8 @@ export function CategorySelector({ value, onChange }: CategorySelectorProps) {
         }
 
         .selector-header {
-          display: flex;
-          align-items: center;
           margin-bottom: 12px;
           padding: 0 4px;
-        }
-
-        .selector-header-icon {
-          color: #6b7280;
-          margin-right: 8px;
-          font-size: 14px;
         }
 
         .selector-header-text {
@@ -154,10 +143,6 @@ export function CategorySelector({ value, onChange }: CategorySelectorProps) {
           flex: 1;
         }
 
-        .button-icon {
-          margin-right: 8px;
-          font-size: 16px;
-        }
 
         .button-text {
           font-size: 14px;
@@ -167,8 +152,11 @@ export function CategorySelector({ value, onChange }: CategorySelectorProps) {
 
         .button-arrow {
           color: #6b7280;
-          font-size: 12px;
+          font-size: 10px;
           transition: transform 0.2s ease;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
         }
 
         .button-arrow.rotated {
@@ -234,10 +222,6 @@ export function CategorySelector({ value, onChange }: CategorySelectorProps) {
           flex: 1;
         }
 
-        .item-icon {
-          margin-right: 12px;
-          font-size: 16px;
-        }
 
         .item-text {
           flex: 1;
@@ -271,9 +255,6 @@ export function CategorySelector({ value, onChange }: CategorySelectorProps) {
 
         /* 暗色模式 */
         @media (prefers-color-scheme: dark) {
-          .selector-header-icon {
-            color: #9ca3af;
-          }
 
           .selector-header-text {
             color: #e5e7eb;

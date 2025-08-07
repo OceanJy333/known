@@ -26,7 +26,6 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { 
       question, 
-      knowledgeBase = [], 
       contextCards = [], 
       nodeId,
       conversationHistory = [],
@@ -35,13 +34,11 @@ export async function POST(request: NextRequest) {
 
     console.log('🚀 [输出节点API] 收到请求:', {
       question: question?.slice(0, 100) + '...',
-      knowledgeBaseSize: knowledgeBase.length,
       contextCardsSize: contextCards.length,
       nodeId,
       nodeType,
       hasHistory: conversationHistory.length > 0,
-      // 添加更详细的知识库信息
-      knowledgeBaseSample: knowledgeBase.slice(0, 3).map((note: any) => ({
+      contextCardsSample: contextCards.slice(0, 3).map((note: any) => ({
         id: note.id,
         title: note.title,
         summary: note.summary?.slice(0, 50) + '...'
@@ -56,30 +53,8 @@ export async function POST(request: NextRequest) {
           // 发送开始事件
           controller.enqueue(encoder.encode(StreamEncoder.encode('start', { nodeId, question })))
 
-          let recalledCards: any[] = []
-
-          // 第一阶段：召回相关卡片（如果没有提供上下文卡片）
-          if (contextCards.length === 0 && knowledgeBase.length > 0) {
-            console.log('📋 [第一阶段] 开始召回相关卡片')
-            controller.enqueue(encoder.encode(StreamEncoder.encode('status', { 
-              status: 'recalling', 
-              message: '正在召回相关内容...' 
-            })))
-
-            recalledCards = await recallRelevantCards(question, knowledgeBase, controller, encoder)
-            
-            console.log('✅ [第一阶段] 召回完成:', {
-              recalledCount: recalledCards.length,
-              recalledIds: recalledCards.map(c => c.id)
-            })
-          } else {
-            // 使用提供的上下文卡片
-            recalledCards = contextCards
-            console.log('📝 [跳过召回] 使用提供的上下文卡片:', contextCards.length)
-          }
-
-          // 第二阶段：基于上下文生成回答
-          console.log('🤖 [第二阶段] 开始生成回答')
+          // 直接使用提供的上下文卡片进行对话
+          console.log('🤖 [AI对话] 开始生成回答')
           controller.enqueue(encoder.encode(StreamEncoder.encode('status', { 
             status: 'generating', 
             message: '正在生成回答...' 
@@ -87,7 +62,7 @@ export async function POST(request: NextRequest) {
 
           await generateAnswerWithContext(
             question, 
-            recalledCards, 
+            contextCards, 
             conversationHistory, 
             nodeType,
             controller, 
@@ -97,10 +72,8 @@ export async function POST(request: NextRequest) {
           // 发送完成事件
           controller.enqueue(encoder.encode(StreamEncoder.encode('complete', { 
             nodeId, 
-            recalledCards: recalledCards.map(card => card.id),
-            contextUsed: recalledCards.length 
+            contextUsed: contextCards.length 
           })))
-          controller.enqueue(encoder.encode(StreamEncoder.complete()))
 
         } catch (error) {
           console.error('❌ [输出节点API] 处理失败:', error)
@@ -130,145 +103,8 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// 第一阶段：召回相关卡片
-async function recallRelevantCards(
-  question: string, 
-  knowledgeBase: any[], 
-  controller: ReadableStreamDefaultController,
-  encoder: TextEncoder
-): Promise<any[]> {
-  
-  // 优化知识库数据，避免token超限
-  const optimizedKnowledgeBase = knowledgeBase
-    .slice(0, 50) // 限制数量
-    .map(note => ({
-      id: note.id,
-      title: note.title,
-      summary: (note.summary || '').slice(0, 200),
-      tags: note.tags,
-      category: note.category
-    }))
 
-  const matchingPrompt = `作为知识检索专家，请从用户的笔记库中找出与问题最相关的笔记。
-
-用户问题：${question}
-
-笔记库：
-${JSON.stringify(optimizedKnowledgeBase, null, 2)}
-
-请分析每个笔记与问题的相关度，返回最相关的5个笔记ID及其相关度评分（0-1）。
-
-返回格式（必须是有效的JSON）：
-{
-  "matches": [
-    {"id": "note-id", "relevance": 0.95, "reason": "相关原因"}
-  ]
-}`
-
-  try {
-    const matchingResponse = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [{ role: 'user', content: matchingPrompt }],
-      temperature: 0.1,
-      max_tokens: 1000
-    })
-
-    const matchingResult = matchingResponse.choices[0]?.message?.content
-    if (!matchingResult) {
-      throw new Error('AI匹配返回为空')
-    }
-
-    // 解析匹配结果
-    let matchingData
-    try {
-      matchingData = JSON.parse(matchingResult)
-    } catch (e) {
-      console.warn('⚠️ [召回] JSON解析失败，尝试提取:', matchingResult)
-      // 尝试提取JSON部分
-      const jsonMatch = matchingResult.match(/\{[\s\S]*\}/)
-      if (jsonMatch) {
-        matchingData = JSON.parse(jsonMatch[0])
-      } else {
-        throw new Error('无法解析AI返回的匹配结果')
-      }
-    }
-
-    // 发送召回的卡片
-    const recalledCards = matchingData.matches
-      ?.filter((match: any) => match.relevance > 0.6) // 只保留相关度高的
-      ?.map((match: any) => {
-        const originalNote = knowledgeBase.find(note => note.id === match.id)
-        return originalNote ? { ...originalNote, relevance: match.relevance, reason: match.reason } : null
-      })
-      ?.filter(Boolean) || []
-
-    // 发送召回结果
-    console.log('📤 [召回] 发送召回结果到前端:', {
-      recalledCardsCount: recalledCards.length,
-      recalledCardsSample: recalledCards.slice(0, 3).map((card: any) => ({
-        id: card.id,
-        title: card.title,
-        relevance: card.relevance
-      })),
-      searchStats: {
-        totalNotesSearched: knowledgeBase.length,
-        notesFound: recalledCards.length,
-        averageRelevance: recalledCards.length > 0 
-          ? (recalledCards.reduce((sum: number, card: any) => sum + card.relevance, 0) / recalledCards.length).toFixed(2)
-          : '0'
-      }
-    })
-    
-    // 打印到后端终端的关键信息
-    console.log('\n🔥 [后端终端] 召回卡片发送确认:')
-    console.log('   - 卡片数量:', recalledCards.length)
-    console.log('   - 卡片ID列表:', recalledCards.map((c: any) => c.id))
-    console.log('   - 卡片标题:', recalledCards.map((c: any) => c.title))
-    console.log('   - 即将发送的事件类型: recalled_cards')
-    console.log('   - 流式传输状态: 正在发送...\n')
-    
-    controller.enqueue(encoder.encode(StreamEncoder.encode('recalled_cards', {
-      cards: recalledCards,
-      searchStats: {
-        totalNotesSearched: knowledgeBase.length,
-        notesFound: recalledCards.length,
-        averageRelevance: recalledCards.length > 0 
-          ? (recalledCards.reduce((sum: number, card: any) => sum + card.relevance, 0) / recalledCards.length).toFixed(2)
-          : '0'
-      }
-    })))
-
-    return recalledCards
-
-  } catch (error) {
-    console.error('❌ [召回] 智能匹配失败:', error)
-    
-    // 回退到关键词匹配
-    console.log('🔄 [召回] 回退到关键词匹配')
-    const fallbackCards = knowledgeBase
-      .filter(note => {
-        const content = `${note.title} ${note.summary || ''} ${note.tags?.join(' ') || ''}`.toLowerCase()
-        const questionWords = question.toLowerCase().split(' ')
-        return questionWords.some(word => word.length > 2 && content.includes(word))
-      })
-      .slice(0, 3)
-      .map(note => ({ ...note, relevance: 0.7, reason: '关键词匹配' }))
-
-    controller.enqueue(encoder.encode(StreamEncoder.encode('recalled_cards', {
-      cards: fallbackCards,
-      searchStats: {
-        totalNotesSearched: knowledgeBase.length,
-        notesFound: fallbackCards.length,
-        averageRelevance: '0.70'
-      },
-      fallback: true
-    })))
-
-    return fallbackCards
-  }
-}
-
-// 第二阶段：基于上下文生成回答
+// 基于上下文生成回答
 async function generateAnswerWithContext(
   question: string,
   contextCards: any[],
@@ -321,7 +157,7 @@ ${conversationHistory.length > 0 ? `对话历史：\n${historyContent}\n` : ''}
 
   try {
     const answerResponse = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: answerPrompt }
@@ -337,6 +173,11 @@ ${conversationHistory.length > 0 ? `对话历史：\n${historyContent}\n` : ''}
       const content = chunk.choices[0]?.delta?.content
       if (content) {
         fullAnswer += content
+        console.log('📤 [API] 发送内容片段:', { 
+          contentLength: content.length,
+          totalLength: fullAnswer.length,
+          preview: content.slice(0, 50) + '...'
+        })
         controller.enqueue(encoder.encode(StreamEncoder.encode('answer_content', { content })))
       }
     }

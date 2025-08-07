@@ -65,7 +65,8 @@ export function NoteItem({ note, isSelected, onSelect, showRelevance = false }: 
       noteTags: note.tags
     }
     
-    e.dataTransfer.setData('application/json', JSON.stringify(dragData))
+    e.dataTransfer.setData('application/x-knowledge-note', JSON.stringify(note))
+    e.dataTransfer.setData('application/json', JSON.stringify(dragData)) // 兼容旧版本
     e.dataTransfer.effectAllowed = 'copy'
   }
 
@@ -86,9 +87,6 @@ export function NoteItem({ note, isSelected, onSelect, showRelevance = false }: 
       {/* 紧凑模式显示 */}
       <div className="note-compact">
         <div className="note-header">
-          <div className="note-icon">
-            📄
-          </div>
           <div className="note-title-area">
             <div className="note-title">{note.title}</div>
             {showRelevance && (
@@ -96,9 +94,6 @@ export function NoteItem({ note, isSelected, onSelect, showRelevance = false }: 
             )}
           </div>
           <div className="note-actions">
-            {note.isFavorite && (
-              <i className="fas fa-star favorite-icon" title="已收藏"></i>
-            )}
             <span className="reading-time">{getReadingTimeText()}</span>
           </div>
         </div>
@@ -139,16 +134,6 @@ export function NoteItem({ note, isSelected, onSelect, showRelevance = false }: 
                   <span className="note-visits">访问{note.accessCount}次</span>
                 </div>
                 
-                {note.rating && (
-                  <div className="note-rating">
-                    {Array.from({ length: 5 }, (_, i) => (
-                      <i 
-                        key={i}
-                        className={`fas fa-star ${i < note.rating! ? 'filled' : ''}`}
-                      ></i>
-                    ))}
-                  </div>
-                )}
               </div>
             </div>
           </div>
@@ -157,12 +142,14 @@ export function NoteItem({ note, isSelected, onSelect, showRelevance = false }: 
 
       <style jsx>{`
         .note-item {
-          margin-bottom: 2px;
-          border-radius: 8px;
+          margin-bottom: 4px;
+          border-radius: 12px;
           cursor: pointer;
-          transition: all 0.15s ease;
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
           background: transparent;
           border: 1px solid transparent;
+          position: relative;
+          overflow: hidden;
         }
 
         .note-item:hover,
@@ -182,7 +169,7 @@ export function NoteItem({ note, isSelected, onSelect, showRelevance = false }: 
         }
 
         .note-compact {
-          padding: 8px 12px;
+          padding: 12px 16px;
         }
 
         .note-header {
@@ -191,10 +178,6 @@ export function NoteItem({ note, isSelected, onSelect, showRelevance = false }: 
           gap: 8px;
         }
 
-        .note-icon {
-          font-size: 14px;
-          flex-shrink: 0;
-        }
 
         .note-title-area {
           flex: 1;
@@ -227,15 +210,11 @@ export function NoteItem({ note, isSelected, onSelect, showRelevance = false }: 
           flex-shrink: 0;
         }
 
-        .favorite-icon {
-          color: #f59e0b;
-          font-size: 11px;
-        }
 
         .reading-time {
           font-size: 11px;
           color: #6b7280;
-          background: rgba(0, 0, 0, 0.04);
+          background: #f3f4f6;
           padding: 2px 6px;
           border-radius: 4px;
         }
@@ -244,18 +223,6 @@ export function NoteItem({ note, isSelected, onSelect, showRelevance = false }: 
           margin-top: 8px;
           padding-top: 8px;
           border-top: 1px solid rgba(0, 0, 0, 0.06);
-          animation: slideDown 0.15s ease-out;
-        }
-
-        @keyframes slideDown {
-          from {
-            opacity: 0;
-            transform: translateY(-4px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
         }
 
         .note-summary {
@@ -280,9 +247,8 @@ export function NoteItem({ note, isSelected, onSelect, showRelevance = false }: 
           font-size: 10px;
           padding: 2px 6px;
           border-radius: 4px;
-          background: rgba(59, 130, 246, 0.08);
+          background: rgba(59, 130, 246, 0.1);
           color: #3b82f6;
-          border: 1px solid;
           white-space: nowrap;
         }
 
@@ -310,19 +276,6 @@ export function NoteItem({ note, isSelected, onSelect, showRelevance = false }: 
           opacity: 0.5;
         }
 
-        .note-rating {
-          display: flex;
-          gap: 1px;
-        }
-
-        .note-rating i {
-          font-size: 9px;
-          color: #d1d5db;
-        }
-
-        .note-rating i.filled {
-          color: #f59e0b;
-        }
 
         .note-date,
         .note-words,
@@ -373,9 +326,6 @@ export function NoteItem({ note, isSelected, onSelect, showRelevance = false }: 
             color: #9ca3af;
           }
 
-          .note-rating i {
-            color: #4b5563;
-          }
         }
 
         /* 移动端适配 */

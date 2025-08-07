@@ -71,6 +71,7 @@ export function BaseOutputNode({
       case 'idle': return 'fas fa-circle'
       case 'recalling': return 'fas fa-search fa-spin'
       case 'generating': return 'fas fa-magic fa-spin'
+      case 'extracting': return 'fas fa-cog fa-spin'
       case 'completed': return 'fas fa-check-circle'
       case 'error': return 'fas fa-exclamation-triangle'
       default: return 'fas fa-circle'
@@ -83,6 +84,7 @@ export function BaseOutputNode({
       case 'idle': return '待处理'
       case 'recalling': return '召回相关内容...'
       case 'generating': return '生成中...'
+      case 'extracting': return '分析内容...'
       case 'completed': return '已完成'
       case 'error': return '处理失败'
       default: return ''
@@ -95,6 +97,7 @@ export function BaseOutputNode({
       case 'idle': return 'status-idle'
       case 'recalling': return 'status-recalling'
       case 'generating': return 'status-generating'
+      case 'extracting': return 'status-extracting'
       case 'completed': return 'status-completed'
       case 'error': return 'status-error'
       default: return ''
@@ -262,6 +265,10 @@ export function BaseOutputNode({
           color: #8b5cf6;
         }
 
+        .status-extracting .status-icon {
+          color: #f59e0b;
+        }
+
         .status-completed .status-icon {
           color: #10b981;
         }
@@ -379,10 +386,7 @@ export function BaseOutputNode({
   function getNodeTypeIcon() {
     switch (node.type) {
       case 'ai-chat': return 'fas fa-comments'
-      case 'html-page': return 'fas fa-code'
-      case 'xiaohongshu': return 'fas fa-image'
-      case 'podcast': return 'fas fa-microphone'
-      case 'ppt': return 'fas fa-presentation'
+      case 'svg-card': return 'fas fa-file-image'
       default: return 'fas fa-cog'
     }
   }
@@ -391,10 +395,7 @@ export function BaseOutputNode({
   function getNodeTypeText() {
     switch (node.type) {
       case 'ai-chat': return 'AI对话'
-      case 'html-page': return 'HTML页面'
-      case 'xiaohongshu': return '小红书图文'
-      case 'podcast': return '播客音频'
-      case 'ppt': return 'PPT演示'
+      case 'svg-card': return 'SVG卡片'
       default: return '输出节点'
     }
   }

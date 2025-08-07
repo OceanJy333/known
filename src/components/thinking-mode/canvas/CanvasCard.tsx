@@ -6,6 +6,7 @@ import { KnowledgeNote } from '@/types/knowledge'
 import { mockNotes, mockTags } from '@/data/mockKnowledge'
 import { HoverPreview } from './HoverPreview'
 import { NoteDetailModal } from './NoteDetailModal'
+import { ConnectionPoint } from './ConnectionPoint'
 
 interface CanvasCardProps {
   card: CanvasCardType
@@ -15,6 +16,11 @@ interface CanvasCardProps {
   onPositionChange: (position: Position) => void
   onSizeChange: (size: CanvasCardType['size']) => void
   onRemove: () => void
+  // 连接点相关
+  hasConnections?: boolean
+  onConnectionStart?: (cardId: string, position: Position) => void
+  onConnectionPointClick?: (cardId: string, e: React.MouseEvent) => void
+  showConnectionPoints?: boolean
 }
 
 function CanvasCardComponent({
@@ -24,7 +30,11 @@ function CanvasCardComponent({
   onSelect,
   onPositionChange,
   onSizeChange,
-  onRemove
+  onRemove,
+  hasConnections = false,
+  onConnectionStart,
+  onConnectionPointClick,
+  showConnectionPoints = false
 }: CanvasCardProps) {
   const [isDragging, setIsDragging] = useState(false)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
@@ -32,6 +42,7 @@ function CanvasCardComponent({
   const [showPreview, setShowPreview] = useState(false)
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [hoverTimer, setHoverTimer] = useState<NodeJS.Timeout | null>(null)
+  const [showConnectionPointsState, setShowConnectionPointsState] = useState(false)
   const cardRef = useRef<HTMLDivElement>(null)
   
   // 获取笔记数据 - 使用 Map 索引优化查找性能
@@ -223,6 +234,9 @@ function CanvasCardComponent({
   const handleMouseEnter = useCallback(() => {
     if (isDragging || isResizing) return
     
+    // 显示连接点
+    setShowConnectionPointsState(true)
+    
     const timer = setTimeout(() => {
       setShowPreview(true)
     }, 1500) // 1.5秒后显示预览
@@ -237,6 +251,7 @@ function CanvasCardComponent({
       setHoverTimer(null)
     }
     setShowPreview(false)
+    setShowConnectionPointsState(false)
   }, [hoverTimer])
 
   // 处理双击查看详情
@@ -276,6 +291,16 @@ function CanvasCardComponent({
       y: rect.top
     }
   }, [])
+  
+  // 处理连接点拖拽开始
+  const handleConnectionStart = useCallback((e: React.DragEvent, position: Position) => {
+    onConnectionStart?.(card.id, position)
+  }, [card.id, onConnectionStart])
+  
+  // 处理连接点点击
+  const handleConnectionPointClick = useCallback((e: React.MouseEvent) => {
+    onConnectionPointClick?.(card.id, e)
+  }, [card.id, onConnectionPointClick])
   
   const cardSize = CARD_SIZES[card.size]
   
@@ -381,6 +406,44 @@ function CanvasCardComponent({
           )}
         </div>
       </div>
+      
+      {/* 连接点 */}
+      {(showConnectionPoints || showConnectionPointsState || isSelected) && (
+        <>
+          <ConnectionPoint
+            position="top"
+            isConnected={hasConnections}
+            isVisible={true}
+            onDragStart={handleConnectionStart}
+            onClick={handleConnectionPointClick}
+            parentRef={cardRef}
+          />
+          <ConnectionPoint
+            position="right"
+            isConnected={hasConnections}
+            isVisible={true}
+            onDragStart={handleConnectionStart}
+            onClick={handleConnectionPointClick}
+            parentRef={cardRef}
+          />
+          <ConnectionPoint
+            position="bottom"
+            isConnected={hasConnections}
+            isVisible={true}
+            onDragStart={handleConnectionStart}
+            onClick={handleConnectionPointClick}
+            parentRef={cardRef}
+          />
+          <ConnectionPoint
+            position="left"
+            isConnected={hasConnections}
+            isVisible={true}
+            onDragStart={handleConnectionStart}
+            onClick={handleConnectionPointClick}
+            parentRef={cardRef}
+          />
+        </>
+      )}
 
       {/* 尺寸切换手柄 */}
       <button

@@ -135,7 +135,6 @@ export function NotesCard({ onNoteSelect }: NotesCardProps) {
       <div className="card-header">
         <div className="header-content">
           <div className="header-left">
-            <i className="fas fa-sticky-note header-icon"></i>
             <div className="header-text">
               <h3 className="card-title">知识笔记</h3>
               <p className="card-subtitle">搜索和管理您的笔记</p>
@@ -185,33 +184,21 @@ export function NotesCard({ onNoteSelect }: NotesCardProps) {
 
       <style jsx>{`
         .notes-card {
-          background: rgba(255, 255, 255, 0.95);
-          backdrop-filter: blur(20px);
-          border: 1px solid rgba(226, 232, 240, 0.8);
-          border-radius: 20px;
+          background: #ffffff;
+          border: 1px solid #e5e7eb;
+          border-radius: 12px;
           overflow: hidden;
-          box-shadow: 
-            0 8px 32px rgba(0, 0, 0, 0.06),
-            0 4px 16px rgba(0, 0, 0, 0.04);
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
           display: flex;
           flex-direction: column;
           height: 100%;
         }
 
-        .notes-card:hover {
-          box-shadow: 
-            0 12px 48px rgba(0, 0, 0, 0.1),
-            0 6px 24px rgba(0, 0, 0, 0.06);
-          transform: translateY(-2px);
-          border-color: rgba(59, 130, 246, 0.3);
-        }
 
         .card-header {
-          padding: 20px;
-          border-bottom: 1px solid rgba(226, 232, 240, 0.5);
-          background: rgba(255, 255, 255, 0.8);
-          backdrop-filter: blur(10px);
+          padding: 16px;
+          border-bottom: 1px solid #f3f4f6;
+          background: #fafafa;
         }
 
         .header-content {
@@ -223,14 +210,6 @@ export function NotesCard({ onNoteSelect }: NotesCardProps) {
         .header-left {
           display: flex;
           align-items: center;
-          gap: 14px;
-        }
-
-        .header-icon {
-          font-size: 20px;
-          color: #3b82f6;
-          width: 24px;
-          text-align: center;
         }
 
         .header-text {
@@ -263,16 +242,16 @@ export function NotesCard({ onNoteSelect }: NotesCardProps) {
           display: flex;
           align-items: center;
           justify-content: center;
-          min-width: 36px;
-          height: 28px;
-          background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+          min-width: 32px;
+          height: 24px;
+          background: #3b82f6;
           color: white;
           font-size: 12px;
           font-weight: 600;
-          border-radius: 14px;
+          border-radius: 12px;
           padding: 0 8px;
-          box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
         }
+
 
         .card-content {
           flex: 1;

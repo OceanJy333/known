@@ -48,6 +48,18 @@ export const NODE_TYPES: NodeType[] = [
       width: 400,
       height: 300
     }
+  },
+  {
+    id: 'svg-card',
+    name: 'SVG卡片',
+    icon: 'fa-file-image',
+    color: '#f59e0b',
+    description: '生成精美的知识卡片',
+    category: 'content',
+    defaultSize: {
+      width: 420,
+      height: 320
+    }
   }
 ]
 

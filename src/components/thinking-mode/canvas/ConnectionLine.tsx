@@ -2,6 +2,7 @@
 
 import React, { useMemo } from 'react'
 import { Position } from '@/types/canvas'
+import { ConnectionStatus } from '@/types/outputNode'
 
 export interface ConnectionData {
   id: string
@@ -24,13 +25,22 @@ interface ConnectionLineProps {
   canvasOffset?: Position
   onConnectionClick?: (connectionId: string) => void
   onConnectionHover?: (connectionId: string | null) => void
+  onConnectionDoubleClick?: (connectionId: string) => void
+  onConnectionRightClick?: (connectionId: string, e: React.MouseEvent) => void
+  // 连接状态相关
+  status?: ConnectionStatus
+  isSelected?: boolean
 }
 
 export function ConnectionLine({
   connection,
   canvasOffset = { x: 0, y: 0 },
   onConnectionClick,
-  onConnectionHover
+  onConnectionHover,
+  onConnectionDoubleClick,
+  onConnectionRightClick,
+  status = ConnectionStatus.ACTIVE,
+  isSelected = false
 }: ConnectionLineProps) {
   
   // 计算连接点
@@ -113,23 +123,45 @@ export function ConnectionLine({
     const baseStyles = {
       stroke: '#6b7280',
       strokeWidth: 2,
-      opacity: 0.6
+      opacity: 0.6,
+      strokeDasharray: 'none'
     }
 
-    // 根据关系类型调整样式
-    switch (relationshipType) {
-      case 'related':
-        baseStyles.stroke = '#667eea'
-        break
-      case 'derived':
-        baseStyles.stroke = '#10b981'
+    // 根据连接状态调整样式
+    switch (status) {
+      case ConnectionStatus.ACTIVE:
+        baseStyles.stroke = '#3b82f6' // 蓝色实线
         baseStyles.strokeWidth = 3
+        baseStyles.opacity = 0.9
         break
-      case 'referenced':
-        baseStyles.stroke = '#f59e0b'
+      case ConnectionStatus.RELATED:
+        baseStyles.stroke = '#6b7280' // 灰色虚线
+        baseStyles.strokeWidth = 2
+        baseStyles.opacity = 0.5
+        baseStyles.strokeDasharray = '8,4'
         break
-      case 'similar':
-        baseStyles.stroke = '#8b5cf6'
+      case ConnectionStatus.DISABLED:
+        baseStyles.stroke = '#ef4444' // 红色删除线
+        baseStyles.strokeWidth = 2
+        baseStyles.opacity = 0.4
+        baseStyles.strokeDasharray = '4,2'
+        break
+      case ConnectionStatus.NEW:
+        baseStyles.stroke = '#10b981' // 绿色实线
+        baseStyles.strokeWidth = 3
+        baseStyles.opacity = 0.8
+        break
+      case ConnectionStatus.FLOWING:
+        baseStyles.stroke = '#10b981' // 绿色流动线
+        baseStyles.strokeWidth = 3
+        baseStyles.opacity = 0.8
+        baseStyles.strokeDasharray = '12,6'
+        break
+      case ConnectionStatus.ERROR:
+        baseStyles.stroke = '#ef4444' // 红色断线
+        baseStyles.strokeWidth = 2
+        baseStyles.opacity = 0.5
+        baseStyles.strokeDasharray = '8,8'
         break
     }
 
@@ -138,7 +170,7 @@ export function ConnectionLine({
     baseStyles.opacity = Math.max(0.3, baseStyles.opacity * strength)
 
     // 高亮状态
-    if (isHighlighted) {
+    if (isHighlighted || isSelected) {
       baseStyles.strokeWidth += 1
       baseStyles.opacity = Math.min(1, baseStyles.opacity + 0.3)
     }
@@ -155,7 +187,21 @@ export function ConnectionLine({
   // 处理点击事件
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation()
+    console.log('📌 ConnectionLine handleClick:', connection.id)
     onConnectionClick?.(connection.id)
+  }
+  
+  // 处理双击事件
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    onConnectionDoubleClick?.(connection.id)
+  }
+  
+  // 处理右键事件
+  const handleRightClick = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    onConnectionRightClick?.(connection.id, e)
   }
 
   // 处理悬停事件
@@ -198,9 +244,12 @@ export function ConnectionLine({
         strokeWidth={style.strokeWidth}
         opacity={style.opacity}
         strokeLinecap="round"
+        strokeDasharray={style.strokeDasharray}
         markerEnd={`url(#${getArrowMarkerId()})`}
-        className={`connection-path ${connection.isAnimated ? 'animated' : ''} ${connection.isHighlighted ? 'highlighted' : ''}`}
+        className={`connection-path ${connection.isAnimated ? 'animated' : ''} ${connection.isHighlighted || isSelected ? 'highlighted' : ''} ${isSelected ? 'selected' : ''}`}
         onClick={handleClick}
+        onDoubleClick={handleDoubleClick}
+        onContextMenu={handleRightClick}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         style={{
@@ -208,6 +257,54 @@ export function ConnectionLine({
           transition: 'all 0.3s ease'
         }}
       />
+      
+      {/* 连接选中时的额外视觉效果 */}
+      {isSelected && (
+        <>
+          {/* 选中阴影 */}
+          <path
+            d={pathData.path}
+            fill="none"
+            stroke={style.stroke}
+            strokeWidth={style.strokeWidth + 4}
+            opacity="0.2"
+            strokeLinecap="round"
+            className="connection-selection"
+            style={{
+              filter: 'blur(2px)',
+              pointerEvents: 'none'
+            }}
+          />
+          
+          {/* 选中指示器 */}
+          <circle
+            cx={(pathData.from.x + pathData.to.x) / 2}
+            cy={(pathData.from.y + pathData.to.y) / 2}
+            r="6"
+            fill="white"
+            stroke={style.stroke}
+            strokeWidth="2"
+            opacity="0.9"
+            className="connection-selected-indicator"
+            style={{
+              filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.2))',
+              pointerEvents: 'none'
+            }}
+          />
+          
+          {/* 选中指示器内部点 */}
+          <circle
+            cx={(pathData.from.x + pathData.to.x) / 2}
+            cy={(pathData.from.y + pathData.to.y) / 2}
+            r="2"
+            fill={style.stroke}
+            className="connection-selected-dot"
+            style={{
+              pointerEvents: 'none'
+            }}
+          />
+        </>
+      )}
 
       {/* 连接线上的标签（如果有强度指示） */}
       {connection.strength && connection.strength > 0.8 && (
@@ -267,6 +364,117 @@ export function ConnectionLine({
         </circle>
       )}
 
+      {/* FLOWING状态的粒子流动效果 */}
+      {status === ConnectionStatus.FLOWING && (
+        <>
+          {/* 多个粒子创建流动效果 */}
+          {[0, 0.33, 0.66].map((offset, index) => (
+            <circle
+              key={`flow-particle-${index}`}
+              r="4"
+              fill={style.stroke}
+              opacity="0"
+              className="flow-particle"
+            >
+              <animateMotion
+                dur="1.5s"
+                repeatCount="indefinite"
+                path={pathData.path}
+                begin={`${offset}s`}
+              />
+              <animate
+                attributeName="opacity"
+                dur="1.5s"
+                values="0;1;1;0"
+                repeatCount="indefinite"
+                begin={`${offset}s`}
+              />
+              <animate
+                attributeName="r"
+                dur="1.5s"
+                values="2;5;5;2"
+                repeatCount="indefinite"
+                begin={`${offset}s`}
+              />
+            </circle>
+          ))}
+          {/* 发光效果 */}
+          <path
+            d={pathData.path}
+            fill="none"
+            stroke={style.stroke}
+            strokeWidth="1"
+            opacity="0.3"
+            className="flow-glow"
+          >
+            <animate
+              attributeName="stroke-width"
+              dur="1.5s"
+              values="1;4;1"
+              repeatCount="indefinite"
+            />
+            <animate
+              attributeName="opacity"
+              dur="1.5s"
+              values="0.1;0.4;0.1"
+              repeatCount="indefinite"
+            />
+          </path>
+        </>
+      )}
+
+      {/* ERROR状态的闪烁效果 */}
+      {status === ConnectionStatus.ERROR && (
+        <>
+          {/* 闪烁的连线 */}
+          <path
+            d={pathData.path}
+            fill="none"
+            stroke={style.stroke}
+            strokeWidth={style.strokeWidth + 2}
+            opacity="0"
+            className="error-flash"
+          >
+            <animate
+              attributeName="opacity"
+              dur="0.5s"
+              values="0;0.6;0"
+              repeatCount="indefinite"
+            />
+          </path>
+          {/* 错误指示器 */}
+          <g className="error-indicator">
+            <circle
+              cx={(pathData.from.x + pathData.to.x) / 2}
+              cy={(pathData.from.y + pathData.to.y) / 2}
+              r="12"
+              fill="#fee2e2"
+              stroke="#ef4444"
+              strokeWidth="2"
+              opacity="0.9"
+            >
+              <animate
+                attributeName="r"
+                dur="1s"
+                values="12;14;12"
+                repeatCount="indefinite"
+              />
+            </circle>
+            <text
+              x={(pathData.from.x + pathData.to.x) / 2}
+              y={(pathData.from.y + pathData.to.y) / 2}
+              textAnchor="middle"
+              dominantBaseline="central"
+              fontSize="16"
+              fill="#ef4444"
+              fontWeight="bold"
+            >
+              !
+            </text>
+          </g>
+        </>
+      )}
+
       <style jsx>{`
         :global(.connection-path) {
           transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -284,6 +492,15 @@ export function ConnectionLine({
 
         :global(.connection-path.highlighted) {
           filter: drop-shadow(0 0 4px currentColor);
+        }
+        
+        :global(.connection-path.selected) {
+          filter: drop-shadow(0 0 6px currentColor);
+        }
+        
+        :global(.connection-path.selected:hover) {
+          stroke-width: ${style.strokeWidth + 2}px !important;
+          opacity: 1 !important;
         }
 
         :global(.connection-label) {
@@ -322,6 +539,34 @@ export function ConnectionLine({
 
         :global(.connection-path.draw-in) {
           animation: connection-draw 0.8s ease-out;
+        }
+
+        /* FLOWING状态样式 */
+        :global(.flow-particle) {
+          filter: drop-shadow(0 0 6px currentColor);
+        }
+
+        :global(.flow-glow) {
+          filter: blur(4px);
+        }
+
+        /* ERROR状态样式 */
+        :global(.error-flash) {
+          filter: blur(3px);
+        }
+
+        :global(.error-indicator) {
+          filter: drop-shadow(0 2px 8px rgba(239, 68, 68, 0.4));
+          animation: error-pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes error-pulse {
+          0%, 100% {
+            transform: scale(1);
+          }
+          50% {
+            transform: scale(1.05);
+          }
         }
       `}</style>
     </g>
@@ -369,6 +614,9 @@ interface ConnectionLayerProps {
   canvasOffset?: Position
   onConnectionClick?: (connectionId: string) => void
   onConnectionHover?: (connectionId: string | null) => void
+  onConnectionDoubleClick?: (connectionId: string) => void
+  onConnectionRightClick?: (connectionId: string, e: React.MouseEvent) => void
+  selectedConnectionId?: string | null
 }
 
 interface ExtendedConnectionLayerProps extends ConnectionLayerProps {
@@ -382,6 +630,9 @@ export function ConnectionLayer({
   canvasOffset = { x: 0, y: 0 },
   onConnectionClick,
   onConnectionHover,
+  onConnectionDoubleClick,
+  onConnectionRightClick,
+  selectedConnectionId,
   ...props
 }: ExtendedConnectionLayerProps) {
   // 转换outputConnections为ConnectionData格式
@@ -393,7 +644,7 @@ export function ConnectionLayer({
       try {
         // 查找源节点和目标节点
         const fromNode = props.outputNodes!.find(node => node.id === conn.fromId)
-        const toCard = props.cards!.find(card => card.noteId === conn.toId)
+        const toCard = props.cards!.find(card => card.id === conn.toId) // 现在 conn.toId 是卡片ID
         
         if (fromNode && toCard) {
           const connectionData: ConnectionData = {
@@ -406,10 +657,10 @@ export function ConnectionLayer({
             toPosition: toCard.position,
             fromSize: { width: 400, height: 200 }, // 输出节点默认尺寸
             toSize: { width: 280, height: 200 }, // 卡片默认尺寸
-            relationshipType: conn.status === 'active' ? 'referenced' : 'related',
+            relationshipType: 'referenced',
             strength: conn.strength || 0.8,
-            isHighlighted: conn.status === 'active',
-            isAnimated: conn.status === 'new'
+            isHighlighted: conn.status === ConnectionStatus.ACTIVE,
+            isAnimated: conn.status === ConnectionStatus.NEW
           }
           convertedOutputConnections.push(connectionData)
         } else {
@@ -417,7 +668,9 @@ export function ConnectionLayer({
             fromId: conn.fromId,
             toId: conn.toId,
             foundFromNode: !!fromNode,
-            foundToCard: !!toCard
+            foundToCard: !!toCard,
+            availableNodes: props.outputNodes?.map(n => n.id) || [],
+            availableCards: props.cards?.map(c => c.id) || []
           })
         }
       } catch (error) {
@@ -448,15 +701,26 @@ export function ConnectionLayer({
       }}
     >
       <g style={{ pointerEvents: 'auto' }}>
-        {allConnections.map(connection => (
-          <ConnectionLine
-            key={connection.id}
-            connection={connection}
-            canvasOffset={canvasOffset}
-            onConnectionClick={onConnectionClick}
-            onConnectionHover={onConnectionHover}
-          />
-        ))}
+        {/* Debug: 连接线容器 */}
+        {allConnections.map(connection => {
+          // 从outputConnections中查找对应的状态信息
+          const outputConn = outputConnections.find(conn => conn.id === connection.id)
+          const status = outputConn?.status || ConnectionStatus.ACTIVE
+          
+          return (
+            <ConnectionLine
+              key={connection.id}
+              connection={connection}
+              canvasOffset={canvasOffset}
+              onConnectionClick={onConnectionClick}
+              onConnectionHover={onConnectionHover}
+              onConnectionDoubleClick={onConnectionDoubleClick}
+              onConnectionRightClick={onConnectionRightClick}
+              status={status}
+              isSelected={selectedConnectionId === connection.id}
+            />
+          )
+        })}
       </g>
     </svg>
   )
